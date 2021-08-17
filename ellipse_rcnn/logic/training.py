@@ -5,7 +5,6 @@ from statistics import mean
 from typing import Tuple, Dict, Iterable
 
 import h5py
-import mlflow
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
@@ -13,12 +12,12 @@ from scipy.spatial.distance import cdist
 from torch import nn
 from torch.optim import SGD
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from tqdm.auto import tqdm as tq
 
-from src.detection.metrics import gaussian_angle_distance
-from src.common.conics import conic_center, plot_conics
-from src.common.data import inspect_dataset
+from .data import get_dataloaders
+from .metrics import gaussian_angle_distance
+from ..utils.conics import conic_center, plot_conics
 
 
 class CraterDataset(Dataset):
@@ -155,31 +154,12 @@ class CraterEllipseDataset(CraterMaskDataset):
         return image, target
 
 
-def get_dataloaders(dataset_path: str, batch_size: int = 10, num_workers: int = 2) -> \
-        Tuple[DataLoader, DataLoader, DataLoader]:
-    train_dataset = CraterEllipseDataset(file_path=dataset_path, group="training")
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers, collate_fn=collate_fn,
-                              shuffle=True)
-
-    validation_dataset = CraterEllipseDataset(file_path=dataset_path, group="validation")
-    validation_loader = DataLoader(validation_dataset, batch_size=batch_size, num_workers=num_workers,
-                                   collate_fn=collate_fn, shuffle=True)
-
-    test_dataset = CraterEllipseDataset(file_path=dataset_path, group="test")
-    test_loader = DataLoader(test_dataset, batch_size=1, num_workers=0, collate_fn=collate_fn,
-                             shuffle=True)
-
-    return train_loader, validation_loader, test_loader
-
-
 def train_model(model: nn.Module, num_epochs: int, dataset_path: str, initial_lr=1e-2, run_id: str = None,
                 scheduler=None, batch_size: int = 32, momentum: float = 0.9, weight_decay: float = 0.0005,
                 num_workers: int = 4, device=None) -> None:
 
     pretrained = run_id is not None
 
-    mlflow.set_tracking_uri("http://localhost:5000/")
-    mlflow.set_experiment("crater-model")
 
     if device is None:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -251,7 +231,6 @@ def train_model(model: nn.Module, num_epochs: int, dataset_path: str, initial_lr
                     mlflow.log_param(tp, optimizer.state_dict()['param_groups'][0][tp])
                 except KeyError as err:
                     pass
-            mlflow.log_figure(inspect_dataset(dataset_path, return_fig=True, summary=False), f"dataset_inspection.png")
 
         for e in range(start_e, num_epochs + start_e):
             train_loader, validation_loader, test_loader = get_dataloaders(dataset_path, batch_size, num_workers)

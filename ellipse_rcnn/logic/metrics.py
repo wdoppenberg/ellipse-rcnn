@@ -5,7 +5,7 @@ import numpy.linalg as LA
 import torch
 from torchvision.ops import box_iou
 
-from src.common.conics import conic_center, scale_det, ellipse_axes
+from ..utils.conics import conic_center, scale_det, ellipse_axes
 
 
 def get_matched_idxs(pred: Union[Dict, torch.Tensor], target: Union[Dict, torch.Tensor], iou_threshold: float = 0.5,
@@ -214,7 +214,7 @@ def gaussian_angle_distance(A1: Union[torch.Tensor, np.ndarray], A2: Union[torch
     cov1, cov2 = map(lambda arr: -arr[..., :2, :2], (A1, A2))
 
     if isinstance(cov1, torch.Tensor) and isinstance(cov2, torch.Tensor):
-        m1, m2 = map(lambda arr: torch.vstack(tuple(conic_center(arr).T)).T[..., None], (A1, A2))
+        m1, m2 = map(lambda arr: torch.vstack(tuple(conic_center(arr))).T[..., None], (A1, A2))
 
         frac_term = (4 * torch.sqrt(cov1.det() * cov2.det())) / (cov1 + cov2).det()
         exp_term = torch.exp(

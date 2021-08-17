@@ -5,7 +5,7 @@ import numpy.linalg as LA
 from astropy.coordinates import spherical_to_cartesian, cartesian_to_spherical
 from scipy.spatial.transform import Rotation
 
-import src.common.constants as const
+import ellipse_rcnn.utils.constants as const
 
 
 def ENU_system(r):

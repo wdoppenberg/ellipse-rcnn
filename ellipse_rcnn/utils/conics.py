@@ -1,19 +1,16 @@
 from typing import Union
 
-import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from astropy.coordinates import spherical_to_cartesian
+
 from matplotlib.collections import EllipseCollection
-from numba import njit
 from numpy import linalg as LA
 from scipy.spatial.distance import cdist
 
-import src.common.constants as const
-from src.common.camera import camera_matrix, projection_matrix, Camera
-from src.common.coordinates import ENU_system
-from src.common.robbins import load_craters, extract_robbins_dataset
+import ellipse_rcnn.utils.constants as const
+from .camera import camera_matrix, projection_matrix, Camera
+from .coordinates import ENU_system
 
 
 def matrix_adjugate(matrix):
@@ -79,72 +76,116 @@ def conic_matrix(a, b, psi, x=0, y=0):
         Array of ellipse matrices
     """
     if isinstance(a, (int, float)):
-        out = np.empty((3, 3))
-        pkg = np
-    elif isinstance(a, torch.Tensor):
-        out = torch.empty((len(a), 3, 3), device=a.device, dtype=torch.float32)
-        pkg = torch
-    elif isinstance(a, np.ndarray):
-        out = np.empty((len(a), 3, 3))
-        pkg = np
-    else:
-        raise TypeError("Input must be of type torch.Tensor, np.ndarray, int or float.")
+        a, b, psi, x, y = map(torch.Tensor, ([a], [b], [psi], [x], [y]))
+    out = torch.empty((len(a), 3, 3), device=a.device, dtype=torch.float32)
 
-    A = (a ** 2) * pkg.sin(psi) ** 2 + (b ** 2) * pkg.cos(psi) ** 2
-    B = 2 * ((b ** 2) - (a ** 2)) * pkg.cos(psi) * pkg.sin(psi)
-    C = (a ** 2) * pkg.cos(psi) ** 2 + b ** 2 * pkg.sin(psi) ** 2
+    A = (a ** 2) * torch.sin(psi) ** 2 + (b ** 2) * torch.cos(psi) ** 2
+    B = 2 * ((b ** 2) - (a ** 2)) * torch.cos(psi) * torch.sin(psi)
+    C = (a ** 2) * torch.cos(psi) ** 2 + b ** 2 * torch.sin(psi) ** 2
     D = -2 * A * x - B * y
     F = -B * x - 2 * C * y
     G = A * (x ** 2) + B * x * y + C * (y ** 2) - (a ** 2) * (b ** 2)
 
-    out[:, 0, 0] = A
-    out[:, 1, 1] = C
-    out[:, 2, 2] = G
+    out[..., 0, 0] = A
+    out[..., 1, 1] = C
+    out[..., 2, 2] = G
 
-    out[:, 1, 0] = out[:, 0, 1] = B / 2
+    out[..., 1, 0] = out[..., 0, 1] = B / 2
 
-    out[:, 2, 0] = out[:, 0, 2] = D / 2
+    out[..., 2, 0] = out[..., 0, 2] = D / 2
 
-    out[:, 2, 1] = out[:, 1, 2] = F / 2
+    out[..., 2, 1] = out[..., 1, 2] = F / 2
 
-    return out
-
-
-@njit
-def conic_center_numba(A):
-    a = LA.inv(A[:2, :2])
-    b = np.expand_dims(-A[:2, 2], axis=-1)
-    return a @ b
+    return out.squeeze()
 
 
-def conic_center(A):
-    if isinstance(A, torch.Tensor):
-        return (torch.inverse(A[..., :2, :2]) @ -A[..., :2, 2][..., None])[..., 0]
-    elif isinstance(A, np.ndarray):
-        return (LA.inv(A[..., :2, :2]) @ -A[..., :2, 2][..., None])[..., 0]
-    else:
-        raise TypeError("Input conics must be of type torch.Tensor or np.ndarray.")
+def conic_center(A: torch.Tensor):
+    centers = (torch.inverse(A[..., :2, :2]) @ -A[..., :2, 2][..., None]).squeeze()
+    return centers[..., 0], centers[..., 1]
 
 
-def ellipse_axes(A):
-    if isinstance(A, torch.Tensor):
-        lambdas = torch.linalg.eigvalsh(A[..., :2, :2]) / (-torch.det(A) / torch.det(A[..., :2, :2]))[..., None]
-        axes = torch.sqrt(1 / lambdas)
-    elif isinstance(A, np.ndarray):
-        lambdas = LA.eigvalsh(A[..., :2, :2]) / (-LA.det(A) / LA.det(A[..., :2, :2]))[..., None]
-        axes = np.sqrt(1 / lambdas)
-    else:
-        raise TypeError("Input conics must be of type torch.Tensor or np.ndarray.")
-    return axes[..., 1], axes[..., 0]
+def ellipse_axes(A: torch.Tensor):
+    lambdas = torch.linalg.eigvalsh(A[..., :2, :2]) / (-torch.det(A) / torch.det(A[..., :2, :2]))[..., None]
+    axes = torch.sqrt(1 / lambdas)
+    return axes[..., 0], axes[..., 1]
 
 
-def ellipse_angle(A):
-    if isinstance(A, torch.Tensor):
-        return torch.atan2(2 * A[..., 1, 0], (A[..., 0, 0] - A[..., 1, 1])) / 2
-    elif isinstance(A, np.ndarray):
-        return np.arctan2(2 * A[..., 1, 0], (A[..., 0, 0] - A[..., 1, 1])) / 2
-    else:
-        raise TypeError("Input conics must be of type torch.Tensor or np.ndarray.")
+def ellipse_angle(A: torch.Tensor):
+    return torch.atan2(2 * A[..., 1, 0], (A[..., 0, 0] - A[..., 1, 1])) / 2
+
+
+def bbox_ellipse(A: torch.Tensor) -> torch.Tensor:
+    """Converts (array of) ellipse matrices to bounding box tensor with format [xmin, ymin, xmax, ymax].
+
+    :param A:
+        Array of ellipse matrices
+    :return:
+        Array of bounding boxes
+    """
+    cx, cy = conic_center(A)
+    psi = ellipse_angle(A)
+    a, b = ellipse_axes(A)
+
+    ux, uy = a * torch.cos(psi), a * torch.sin(psi)
+    vx, vy = b * torch.cos(psi + np.pi/2), b * torch.sin(psi + np.pi/2)
+
+    box_width = torch.sqrt(ux**2 + vx**2)
+    box_height = torch.sqrt(uy**2 + vy**2)
+
+    boxes_analytical = torch.vstack((cx - box_width/2, cy - box_height/2, cx + box_width/2, cy + box_height/2)).T.to(A)
+
+    return boxes_analytical
+
+
+class Ellipse:
+    def __init__(self, conic_matrix: torch.Tensor):
+        if conic_matrix.shape != torch.Size([3, 3]):
+            raise ValueError("Input array needs to be 3x3!")
+        self.__data: torch.Tensor = conic_matrix
+
+    @classmethod
+    def from_params(cls, a, b, psi, x=0, y=0):
+        return cls(conic_matrix(a, b, psi, x, y))
+
+    @property
+    def axes(self):
+        return ellipse_axes(self.matrix)
+
+    @property
+    def angle(self):
+        return ellipse_angle(self.matrix)
+
+    @property
+    def center(self):
+        return conic_center(self.matrix)
+
+    @property
+    def matrix(self):
+        return self.__data
+
+    @matrix.setter
+    def matrix(self, other: torch.Tensor):
+        if other.shape != torch.Size([3, 3]):
+            raise ValueError("Input array needs to be 3x3!")
+        self.__data = other
+
+    def to(self, *args, **kwargs):
+        self.__data.to(*args, **kwargs)
+
+    def device(self):
+        return self.__data.device
+
+    def __str__(self):
+        a, b = self.axes
+        x, y = self.center
+        angle = self.angle
+        return f"Ellipse(a={a:.1f}, b={b:.1f}, angle={angle:.1f}, x={x:.1f}, y={y:.1f}, device={self.device})"
+
+    def __repr__(self):
+        return str(self)
+
+    def __del__(self):
+        del self.__data
 
 
 def plot_conics(A_craters: Union[np.ndarray, torch.Tensor],
@@ -179,35 +220,6 @@ def plot_conics(A_craters: Union[np.ndarray, torch.Tensor],
                 ax.text(x, y, str(k))
 
 
-def generate_mask(A_craters,
-                  resolution=const.CAMERA_RESOLUTION,
-                  filled=False,
-                  instancing=False,
-                  thickness=1
-                  ):
-    a_proj, b_proj = map(lambda x: x / 2, ellipse_axes(A_craters))
-    psi_proj = np.degrees(ellipse_angle(A_craters))
-    r_pix_proj = conic_center(A_craters)
-
-    a_proj, b_proj, psi_proj, r_pix_proj = map(lambda i: np.round(i).astype(int),
-                                               (a_proj, b_proj, psi_proj, r_pix_proj))
-
-    mask = np.zeros(resolution)
-
-    if filled:
-        thickness = -1
-
-    for i, (a, b, x, y, psi) in enumerate(zip(a_proj, b_proj, *r_pix_proj.T, psi_proj), 1):
-        mask = cv2.ellipse(mask,
-                           (x, y),
-                           (a, b),
-                           psi,
-                           0,
-                           360,
-                           i if instancing else 1,
-                           thickness)
-
-    return mask
 
 
 def crater_camera_homography(r_craters, P_MC):
@@ -305,22 +317,6 @@ class ConicProjector(Camera):
         H_Ci = crater_camera_homography(r_craters, self.projection_matrix)
         return (H_Ci @ np.array([0, 0, 1]) / (H_Ci @ np.array([0, 0, 1]))[:, -1][:, None])[:, :2]
 
-    def generate_mask(self,
-                      A_craters=None,
-                      C_craters=None,
-                      r_craters=None,
-                      **kwargs
-                      ):
-
-        if A_craters is None:
-            if C_craters is None or r_craters is None:
-                raise ValueError("Must provide either crater data in respective ENU-frame (C_craters & r_craters) "
-                                 "or in image-frame (A_craters)!")
-
-            A_craters = self.project_crater_conics(C_craters, r_craters)
-
-        return generate_mask(A_craters=A_craters, resolution=self.resolution, **kwargs)
-
     def plot(self,
              A_craters=None,
              C_craters=None,
@@ -357,41 +353,6 @@ class MaskGenerator(ConicProjector):
         self.filled = filled
         self.C_craters_catalogue = C_craters_catalogue
         self.r_craters_catalogue = r_craters_catalogue
-
-    @classmethod
-    def from_robbins_dataset(cls,
-                             file_path="data/lunar_crater_database_robbins_2018.csv",
-                             diamlims=const.DIAMLIMS,
-                             ellipse_limit=const.MAX_ELLIPTICITY,
-                             arc_lims=const.ARC_LIMS,
-                             axis_threshold=const.AXIS_THRESHOLD,
-                             filled=False,
-                             instancing=True,
-                             mask_thickness=1,
-                             position=None,
-                             resolution=const.CAMERA_RESOLUTION,
-                             fov=const.CAMERA_FOV,
-                             primary_body_radius=const.RMOON,
-                             **load_crater_kwargs
-                             ):
-        lat_cat, long_cat, major_cat, minor_cat, psi_cat, crater_id = extract_robbins_dataset(
-            load_craters(file_path, diamlims=diamlims, ellipse_limit=ellipse_limit, arc_lims=arc_lims,
-                         **load_crater_kwargs)
-        )
-        r_craters_catalogue = np.array(np.array(spherical_to_cartesian(const.RMOON, lat_cat, long_cat))).T[..., None]
-        C_craters_catalogue = conic_matrix(major_cat, minor_cat, psi_cat)
-
-        return cls(r_craters_catalogue=r_craters_catalogue,
-                   C_craters_catalogue=C_craters_catalogue,
-                   axis_threshold=axis_threshold,
-                   filled=filled,
-                   instancing=instancing,
-                   mask_thickness=mask_thickness,
-                   resolution=resolution,
-                   fov=fov,
-                   primary_body_radius=primary_body_radius,
-                   position=position
-                   )
 
     def _visible(self):
         return (cdist(self.r_craters_catalogue.squeeze(), self.position.T) <=
@@ -440,3 +401,4 @@ class MaskGenerator(ConicProjector):
 
     def plot(self, *args, **kwargs):
         super(MaskGenerator, self).plot(A_craters=self.craters_in_image(), *args, **kwargs)
+

@@ -157,4 +157,15 @@ class EllipseRCNN(GeneralizedRCNN, pl.LightningModule):
         super().__init__(backbone, rpn, roi_heads, transform)
 
     def configure_optimizers(self):
-        optimizer = SGD(params, lr=initial_lr, momentum=momentum, weight_decay=weight_decay)
+        return SGD(self.parameters(), lr=0.005, momentum=0.9, weight_decay=1e-4)
+
+    def training_step(self, batch, batch_idx) -> torch.Tensor:
+        images, targets = batch
+        loss_dict = self(images, targets)
+        for name, value in loss_dict.items():
+            self.log(name, value, prog_bar=True, logger=True, on_step=True)
+
+        loss = sum(loss_dict.values())
+        self.log('total_loss', loss, prog_bar=True, logger=True, on_step=True)
+
+        return loss

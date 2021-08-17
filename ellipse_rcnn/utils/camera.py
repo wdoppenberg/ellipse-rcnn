@@ -5,8 +5,8 @@ import numpy as np
 import numpy.linalg as LA
 from astropy.coordinates import spherical_to_cartesian
 
-import src.common.constants as const
-from src.common.coordinates import OrbitingBodyBase
+import ellipse_rcnn.utils.constants as const
+from .coordinates import OrbitingBodyBase
 
 
 def camera_matrix(fov=const.CAMERA_FOV, resolution=const.CAMERA_RESOLUTION, alpha=0):

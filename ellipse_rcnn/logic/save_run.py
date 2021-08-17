@@ -7,7 +7,7 @@ from src import CraterDetector
 
 
 def get_parser():
-    parser = argparse.ArgumentParser(description='Save model weights to file.',
+    parser = argparse.ArgumentParser(description='Save logic weights to file.',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--run_id', type=str, default=None, nargs='?',
                         help='Resume from MLflow run checkpoint')
@@ -20,7 +20,7 @@ if __name__ == "__main__":
     parser = get_parser()
     args = parser.parse_args()
     mlflow.set_tracking_uri("http://localhost:5000/")
-    mlflow.set_experiment("crater-model")
+    mlflow.set_experiment("crater-logic")
 
     model = CraterDetector()
     checkpoint = mlflow.pytorch.load_state_dict(fr"runs:/{args.run_id}/checkpoint")
