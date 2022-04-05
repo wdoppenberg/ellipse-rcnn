@@ -5,7 +5,7 @@ import numpy.linalg as LA
 import torch
 from torchvision.ops import box_iou
 
-from ..utils.conics import conic_center, scale_det, ellipse_axes
+from ..utils.conics import conic_center, unimodular_matrix, ellipse_axes
 
 
 def get_matched_idxs(pred: Union[Dict, torch.Tensor], target: Union[Dict, torch.Tensor], iou_threshold: float = 0.5,
@@ -190,7 +190,7 @@ def f1_score(precision: float, recall: float) -> float:
 
 
 def mv_kullback_leibler_divergence(A1: torch.Tensor, A2: torch.Tensor, shape_only: bool = False) -> torch.Tensor:
-    A1, A2 = map(scale_det, (A1, A2))
+    A1, A2 = map(unimodular_matrix, (A1, A2))
     cov1, cov2 = map(lambda arr: -arr[..., :2, :2], (A1, A2))
     m1, m2 = map(lambda arr: torch.vstack(tuple(conic_center(arr).T)).T[..., None], (A1, A2))
 
@@ -210,7 +210,7 @@ def norm_mv_kullback_leibler_divergence(A1: torch.Tensor, A2: torch.Tensor) -> t
 
 
 def gaussian_angle_distance(A1: Union[torch.Tensor, np.ndarray], A2: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
-    A1, A2 = map(scale_det, (A1, A2))
+    A1, A2 = map(unimodular_matrix, (A1, A2))
     cov1, cov2 = map(lambda arr: -arr[..., :2, :2], (A1, A2))
 
     if isinstance(cov1, torch.Tensor) and isinstance(cov2, torch.Tensor):

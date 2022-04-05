@@ -1,0 +1,49 @@
+[project]
+name = "ellipse-rcnn"
+version = "0.1.0"
+description = "A PyTorch (Lightning) implementation of Ellipse R-CNN."
+authors = [
+    "Wouter Doppenberg <wouterdoppenberg@gmail.com>"
+]
+readme = "README.md"
+python = "^3.8"
+
+classifiers = [
+    "Topic :: Deep Learning"
+]
+
+# Requirements
+[dependencies]
+Click = "^7.0"
+
+[dev-dependencies]
+black = { version = "^18.3-alpha.0", python = "^3.8" }
+
+[build-system]
+requires = [
+    "setuptools >= 35.0.2",
+    "h5py == 3.4.0"
+]
+build-backend = "setuptools.build_meta"
+
+[tool.black]
+line-length = 120
+target_version = ['py38']
+include = '\.pyi?$'
+exclude = '''
+
+(
+  /(
+      \.eggs         # exclude a few common directories in the
+    | \.git          # root of the project
+    | \.hg
+    | \.mypy_cache
+    | \.tox
+    | \.venv
+    | _build
+    | buck-out
+    | build
+    | dist
+  )/
+)
+'''

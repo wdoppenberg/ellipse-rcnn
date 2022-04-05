@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod, ABCMeta
 from collections import Iterable
 from typing import Tuple, Dict
 
@@ -5,14 +6,33 @@ import h5py
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from ..utils.conics import bbox_ellipse
+from utils.conics import bbox_ellipse
+from utils.types import TargetDict
 
 
 def collate_fn(batch: Iterable):
     return tuple(zip(*batch))
 
 
-class EllipseDataset(Dataset):
+class EllipseDatasetBase(ABC, Dataset):
+    def __init__(
+            self,
+            data_file: str,
+            transform: torch.nn.Module,
+    ) -> None:
+        self.data_file = data_file
+        self.transform = transform
+
+    @abstractmethod
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, TargetDict]:
+        pass
+
+
+class CraterEllipseDataset(Dataset):
+    """
+    Dataset for crater ellipse detection. Mostly meant as an example in combination with
+    https://github.com/wdoppenberg/crater-detection.
+    """
     def __init__(self,
                  file_path: str,
                  group: str
@@ -27,18 +47,18 @@ class EllipseDataset(Dataset):
             end_idx = dataset[self.group]["craters/crater_list_idx"][idx + 1]
             A_craters = torch.Tensor(dataset[self.group]["craters/A_craters"][start_idx:end_idx])
 
-        boxes = bbox_ellipse(A_craters)
-        area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
+        bboxes = bbox_ellipse(A_craters)
+        area = (bboxes[:, 3] - bboxes[:, 1]) * (bboxes[:, 2] - bboxes[:, 0])
 
-        num_objs = len(boxes)
+        num_objs = len(bboxes)
 
         labels = torch.ones((num_objs,), dtype=torch.int64)
         image_id = torch.tensor([idx])
 
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
 
-        target = dict(
-            boxes=boxes,
+        target = TargetDict(
+            bboxes=bboxes,
             labels=labels,
             image_id=image_id,
             area=area,
@@ -57,17 +77,17 @@ class EllipseDataset(Dataset):
         return collate_fn(batch)
 
 
-def get_dataloaders(dataset_path: str, batch_size: int = 10, num_workers: int = 2) -> \
+def get_dataloaders(dataset_path: str, batch_size: int = 32, num_workers: int = 8) -> \
         Tuple[DataLoader, DataLoader, DataLoader]:
-    train_dataset = EllipseDataset(file_path=dataset_path, group="training")
+    train_dataset = CraterEllipseDataset(file_path=dataset_path, group="training")
     train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers, collate_fn=collate_fn,
                               shuffle=True)
 
-    validation_dataset = EllipseDataset(file_path=dataset_path, group="validation")
+    validation_dataset = CraterEllipseDataset(file_path=dataset_path, group="validation")
     validation_loader = DataLoader(validation_dataset, batch_size=batch_size, num_workers=num_workers,
                                    collate_fn=collate_fn, shuffle=True)
 
-    test_dataset = EllipseDataset(file_path=dataset_path, group="test")
+    test_dataset = CraterEllipseDataset(file_path=dataset_path, group="test")
     test_loader = DataLoader(test_dataset, batch_size=1, num_workers=0, collate_fn=collate_fn,
                              shuffle=True)
 

@@ -27,10 +27,10 @@ if __name__ == "__main__":
             "blobs/CraterRCNN.onnx",
             # do_constant_folding=True,
             verbose=False,
-            export_params=True,  # store the trained parameter weights inside the logic file
+            export_params=True,  # store the trained parameter weights inside the core file
             opset_version=11,
             do_constant_folding=True,
-            input_names=['image_in'],  # the logic's input names
+            input_names=['image_in'],  # the core's input names
             output_names=['boxes', 'labels', 'scores', 'ellipse_matrices'],
             dynamic_axes={'image_in': {0: 'batch'},
                           'boxes': {0: 'sequence'},
@@ -39,7 +39,7 @@ if __name__ == "__main__":
                           'ellipse_matrices': {0: 'sequence'}}
         )
 
-    # Load the ONNX logic
+    # Load the ONNX core
     model_onnx = onnx.load("blobs/CraterRCNN.onnx")
 
     # Check that the IR is well formed
