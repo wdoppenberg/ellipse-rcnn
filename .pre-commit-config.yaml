@@ -18,7 +18,6 @@ repos:
       - id: black
         args: [ --line-length=120 ]
         exclude_types: [ jupyter ]
-        exclude: infrastructure
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v0.910
     hooks:

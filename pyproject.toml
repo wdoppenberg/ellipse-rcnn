@@ -1,49 +1,31 @@
-[project]
+[tool.poetry]
 name = "ellipse-rcnn"
 version = "0.1.0"
-description = "A PyTorch (Lightning) implementation of Ellipse R-CNN."
-authors = [
-    "Wouter Doppenberg <wouterdoppenberg@gmail.com>"
-]
-readme = "README.md"
-python = "^3.8"
-
-classifiers = [
-    "Topic :: Deep Learning"
+description = "A PyTorch Implementation of Ellipse-RCNN"
+authors = ["Wouter Doppenberg <wouterdoppenberg@gmail.com>"]
+license = "MIT"
+packages = [
+    { include = "ellipse_rcnn" }
 ]
 
-# Requirements
-[dependencies]
-Click = "^7.0"
+[tool.poetry.dependencies]
+python = "^3.9"
+torchvision = "^0.12.0"
+pandas = "^1.4.2"
+matplotlib = "^3.5.1"
+pytorch-lightning = "^1.6.1"
+h5py = "^3.6.0"
+torch = "^1.11.0"
+torchmetrics = "^0.8.1"
 
-[dev-dependencies]
-black = { version = "^18.3-alpha.0", python = "^3.8" }
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.1.1"
+pre-commit = "^2.18.1"
+poethepoet = "^0.10.0"
+
+[tool.poe.tasks]
+force-cuda11 = "python -m pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 -f https://download.pytorch.org/whl/torch_stable.html"
 
 [build-system]
-requires = [
-    "setuptools >= 35.0.2",
-    "h5py == 3.4.0"
-]
-build-backend = "setuptools.build_meta"
-
-[tool.black]
-line-length = 120
-target_version = ['py38']
-include = '\.pyi?$'
-exclude = '''
-
-(
-  /(
-      \.eggs         # exclude a few common directories in the
-    | \.git          # root of the project
-    | \.hg
-    | \.mypy_cache
-    | \.tox
-    | \.venv
-    | _build
-    | buck-out
-    | build
-    | dist
-  )/
-)
-'''
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

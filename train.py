@@ -1,12 +1,11 @@
 import pytorch_lightning as pl
 
-from ellipse_rcnn import get_dataloaders, EllipseRCNN
+from ellipse_rcnn import EllipseRCNN
+from ellipse_rcnn.utils.data import get_dataloaders
 
 if __name__ == "__main__":
     train_loader, validation_loader, test_loader = get_dataloaders(
-        "C:\dev\workspace\crater-detection\data\dataset_crater_detection_80k.h5",
-        batch_size=32,
-        num_workers=8
+        "data/dataset_sample.h5", batch_size=32, num_workers=8
     )
 
     model = EllipseRCNN()

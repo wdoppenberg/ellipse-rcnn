@@ -1,2 +1,1 @@
-from .model import EllipseRCNN
-from .training import train_model
+from .model import EllipseRCNN  # noqa: F401
