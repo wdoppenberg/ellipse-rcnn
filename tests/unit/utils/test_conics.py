@@ -1,6 +1,7 @@
 import torch
 
 from ellipse_rcnn.utils.conics import (
+    bbox_ellipse,
     conic_center,
     ellipse_axes,
     ellipse_angle,
@@ -63,8 +64,6 @@ def test_ellipse_conic_conversion() -> None:
     # Test with circular ellipse
 
     major_axis, minor_axis = torch.tensor([5.0, 6.0]), torch.tensor([5.0, 6.0])
-    cx, cy = torch.tensor([1.0, 2.0]), torch.tensor([3.0, 4.0])
-    theta = torch.tensor([0.1, 0.2])
 
     conic_matrices = ellipse_to_conic_matrix(major_axis, minor_axis, cx, cy, theta)
 
@@ -75,28 +74,28 @@ def test_ellipse_conic_conversion() -> None:
     assert torch.allclose(ellipse_angle(conic_matrices), torch.tensor([0.0, 0.0]))
 
 
-# def test_bbox_ellipse():
-#     semimajor_axis, semiminor_axis = torch.tensor([5.0, 6.0]), torch.tensor([3.0, 4.0])
-#     cx, cy = torch.tensor([1.0, 2.0]), torch.tensor([3.0, 4.0])
-#     theta = torch.tensor([0.0, 0.0])
-#
-#     ellipse_matrices = ellipse_to_conic_matrix(semimajor_axis, semiminor_axis, cx, cy, theta)
-#
-#     expected_bbox = torch.tensor([[-4, 0.0, 6.0, 6.0], [-4.0, 0.0, 8.0, 8.0]])
-#     calculated_bbox = bbox_ellipse(ellipse_matrices)
-#
-#     assert torch.allclose(calculated_bbox, expected_bbox)
-#
-#     # Example from
-#     # https://stackoverflow.com/questions/87734/how-do-you-calculate-the-axis-aligned-bounding-box-of-an-ellipse
-#
-#     semimajor_axis, semiminor_axis = torch.tensor([2.0]), torch.tensor([1.0])
-#     cx, cy = torch.tensor([0.0]), torch.tensor([0.0])
-#     theta = torch.tensor([0.0])
-#
-#     ellipse_matrix = ellipse_to_conic_matrix(semimajor_axis, semiminor_axis, cx, cy, theta)
-#     expected_bbox = torch.tensor([[-2.0, -1.0, 2.0, 1.0]])
-#
-#     calculated_bbox = bbox_ellipse(ellipse_matrix)
-#
-#     assert torch.allclose(calculated_bbox, expected_bbox)
+def test_bbox_ellipse() -> None:
+    semimajor_axis, semiminor_axis = torch.tensor([5.0, 6.0]), torch.tensor([3.0, 4.0])
+    cx, cy = torch.tensor([1.0, 2.0]), torch.tensor([3.0, 4.0])
+    theta = torch.tensor([0.0, 0.0])
+
+    ellipse_matrices = ellipse_to_conic_matrix(semimajor_axis, semiminor_axis, cx, cy, theta)
+
+    expected_bbox = torch.tensor([[-4, 0.0, 6.0, 6.0], [-4.0, 0.0, 8.0, 8.0]])
+    calculated_bbox = bbox_ellipse(ellipse_matrices)
+
+    assert torch.allclose(calculated_bbox, expected_bbox)
+
+    # Example from
+    # https://stackoverflow.com/questions/87734/how-do-you-calculate-the-axis-aligned-bounding-box-of-an-ellipse
+
+    semimajor_axis, semiminor_axis = torch.tensor([2.0]), torch.tensor([1.0])
+    cx, cy = torch.tensor([0.0]), torch.tensor([0.0])
+    theta = torch.tensor([0.0])
+
+    ellipse_matrix = ellipse_to_conic_matrix(semimajor_axis, semiminor_axis, cx, cy, theta)
+    expected_bbox = torch.tensor([[-2.0, -1.0, 2.0, 1.0]])
+
+    calculated_bbox = bbox_ellipse(ellipse_matrix)
+
+    assert torch.allclose(calculated_bbox, expected_bbox)

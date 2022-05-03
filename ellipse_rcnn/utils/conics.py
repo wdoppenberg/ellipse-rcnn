@@ -161,7 +161,7 @@ def bbox_ellipse(ellipses: torch.Tensor) -> torch.Tensor:
     """
     cx, cy = conic_center(ellipses)
     theta = ellipse_angle(ellipses)
-    semi_major_axis, semi_minor_axis = ellipse_semi_axes(ellipses)
+    semi_major_axis, semi_minor_axis = ellipse_axes(ellipses)
 
     ux, uy = semi_major_axis * torch.cos(theta), semi_major_axis * torch.sin(theta)
     vx, vy = semi_minor_axis * torch.cos(theta + pi / 2), semi_minor_axis * torch.sin(theta + pi / 2)

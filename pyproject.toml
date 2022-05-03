@@ -18,10 +18,11 @@ h5py = "^3.6.0"
 torch = "^1.11.0"
 torchmetrics = "^0.8.1"
 
-[tool.poetry.group.dev.dependencies]
+[tool.poetry.dev-dependencies]
 pytest = "^7.1.1"
 pre-commit = "^2.18.1"
 poethepoet = "^0.10.0"
+jupyter = "^1.0.0"
 
 [tool.poe.tasks]
 force-cuda11 = "python -m pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 -f https://download.pytorch.org/whl/torch_stable.html"
