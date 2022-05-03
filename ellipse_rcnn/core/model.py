@@ -5,7 +5,6 @@ import pytorch_lightning as pl
 from torch import nn
 from torch.nn import Conv2d
 from torch.optim import SGD, Optimizer
-from utils.types import CollatedBatchType
 from torchvision.ops import MultiScaleRoIAlign
 from torchvision.models.detection.rpn import RPNHead, RegionProposalNetwork
 from torchvision.models.detection.transform import GeneralizedRCNNTransform
@@ -15,6 +14,7 @@ from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 from torchvision.models.detection.generalized_rcnn import GeneralizedRCNN
 
 from .roi_heads import EllipseRoIHeads, EllipseRegressor
+from ..utils.types import CollatedBatchType
 
 
 class EllipseRCNN(GeneralizedRCNN, pl.LightningModule):

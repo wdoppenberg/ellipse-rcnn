@@ -3,12 +3,13 @@ from typing import Tuple
 
 import h5py
 import torch
-from utils.types import TargetDict, RawBatchType, ImageTargetTuple, CollatedBatchType
-from utils.conics import bbox_ellipse
 from torch.utils.data import Dataset, DataLoader
 
+from .types import TargetDict, ImageTargetTuple, CollatedBatchType, UncollatedBatchType
+from .conics import bbox_ellipse
 
-def collate_fn(batch: RawBatchType) -> CollatedBatchType:
+
+def collate_fn(batch: UncollatedBatchType) -> CollatedBatchType:
     """
     Collate function for the :class:`DataLoader`.
 
@@ -17,7 +18,7 @@ def collate_fn(batch: RawBatchType) -> CollatedBatchType:
     batch:
         A batch of data.
     """
-    return tuple(zip(*batch))
+    return tuple(zip(*batch))  # type: ignore
 
 
 class EllipseDatasetBase(ABC, Dataset):
@@ -51,10 +52,10 @@ class CraterEllipseDataset(Dataset):
             end_idx = dataset[self.group]["craters/crater_list_idx"][idx + 1]
             A_craters = torch.tensor(dataset[self.group]["craters/A_craters"][start_idx:end_idx])
 
-        bboxes = bbox_ellipse(A_craters)
-        area = (bboxes[:, 3] - bboxes[:, 1]) * (bboxes[:, 2] - bboxes[:, 0])
+        boxes = bbox_ellipse(A_craters)
+        area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
 
-        num_objs = len(bboxes)
+        num_objs = len(boxes)
 
         labels = torch.ones((num_objs,), dtype=torch.int64)
         image_id = torch.tensor([idx])
@@ -62,7 +63,7 @@ class CraterEllipseDataset(Dataset):
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
 
         target = TargetDict(
-            bboxes=bboxes,
+            boxes=boxes,
             labels=labels,
             image_id=image_id,
             area=area,

@@ -1,11 +1,12 @@
-from typing import List, Tuple, Union, Iterable, TypedDict
+from typing import List, Tuple, Union, TypedDict
 
 import torch
-from utils.conics import Ellipse
+
+from .conics import Ellipse
 
 
 class TargetDict(TypedDict):
-    bboxes: torch.Tensor
+    boxes: torch.Tensor
     labels: torch.Tensor
     image_id: torch.Tensor
     area: torch.Tensor
@@ -20,8 +21,8 @@ class PredictionDict(TypedDict):
     ellipse_matrices: torch.Tensor
 
 
-ImageTargetTuple = Tuple[torch.Tensor, TargetDict]
-CollatedBatchType = Tuple[torch.Tensor, List[TargetDict]]
-RawBatchType = Iterable[CollatedBatchType]
+ImageTargetTuple = Tuple[torch.Tensor, TargetDict]  # Tensor shape: (C, H, W)
+CollatedBatchType = Tuple[Tuple[torch.Tensor, ...], Tuple[TargetDict, ...]]  # Tensor shape: (C, H, W)
+UncollatedBatchType = List[ImageTargetTuple]
 
 EllipseType = Union[torch.Tensor, Ellipse]
