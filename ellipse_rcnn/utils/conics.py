@@ -51,7 +51,7 @@ def unimodular_matrix(matrix: torch.Tensor) -> torch.Tensor:
     return (torch.sign(val) * torch.pow(torch.abs(val), 1.0 / 3.0))[..., None, None] * matrix
 
 
-@torch.jit.script
+# @torch.jit.script
 def ellipse_to_conic_matrix(
     a: torch.Tensor,
     b: torch.Tensor,

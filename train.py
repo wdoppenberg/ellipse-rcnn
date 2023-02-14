@@ -1,15 +1,17 @@
 import pytorch_lightning as pl
+from torch.utils.data import DataLoader
 
 from ellipse_rcnn import EllipseRCNN
-from ellipse_rcnn.utils.data import get_dataloaders
+from ellipse_rcnn.core.model import EllipseRCNNLightning
+from ellipse_rcnn.utils.data.base import collate_fn
+from ellipse_rcnn.utils.data.fddb import FDDB
 
 if __name__ == "__main__":
-    train_loader, validation_loader, test_loader = get_dataloaders(
-        "data/dataset_sample.h5", batch_size=32, num_workers=8
-    )
-
     model = EllipseRCNN()
+    pl_model = EllipseRCNNLightning(model)
 
-    trainer = pl.Trainer(gpus=1, precision=16)
+    train_loader = DataLoader(FDDB("data/FDDB"), batch_size=1, num_workers=0, collate_fn=collate_fn)
 
-    trainer.fit(model, train_loader)
+    trainer = pl.Trainer(accelerator='gpu', precision=16)
+
+    trainer.fit(pl_model, train_loader)

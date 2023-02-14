@@ -19,14 +19,6 @@ def collate_fn(batch: UncollatedBatchType) -> CollatedBatchType:
 
 
 class EllipseDatasetBase(ABC, Dataset):
-    def __init__(
-        self,
-        data_file: str,
-        *args: Any,
-        **kwargs: Any,
-    ) -> None:
-        self.data_file = data_file
-
     @abstractmethod
     def load_image(self, index: int) -> Any:
         """
@@ -44,6 +36,7 @@ class EllipseDatasetBase(ABC, Dataset):
         """
         pass
 
+    @abstractmethod
     def load_target_dict(self, index: int) -> TargetDict:
         """
         Load the target dict for the given index.
@@ -57,26 +50,6 @@ class EllipseDatasetBase(ABC, Dataset):
         -------
         target_dict:
             The target dictionary.
-        """
-        pass
-
-    def _transform_all(self, image: Any, target_dict: TargetDict) -> ImageTargetTuple:
-        """
-        Transform the image and target dict.
-
-        Parameters
-        ----------
-        image:
-            The image.
-        target_dict:
-            The target dict.
-
-        Returns
-        -------
-        image:
-            The transformed image.
-        target_dict:
-            The transformed target dict.
         """
         pass
 

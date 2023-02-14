@@ -1,9 +1,8 @@
-from typing import List, Tuple, Optional
+from typing import Any, List, Tuple, Optional
 
 import torch
 import pytorch_lightning as pl
 from torch import nn
-from torch.nn import Conv2d
 from torch.optim import SGD, Optimizer
 from torchvision.ops import MultiScaleRoIAlign
 from torchvision.models.detection.rpn import RPNHead, RegionProposalNetwork
@@ -17,7 +16,7 @@ from .roi_heads import EllipseRoIHeads, EllipseRegressor
 from ..utils.types import CollatedBatchType
 
 
-class EllipseRCNN(GeneralizedRCNN, pl.LightningModule):
+class EllipseRCNN(GeneralizedRCNN):
     def __init__(
         self,
         num_classes: int = 2,
@@ -62,7 +61,7 @@ class EllipseRCNN(GeneralizedRCNN, pl.LightningModule):
         backbone = resnet_fpn_backbone(backbone_name, pretrained=True, trainable_layers=5)
 
         # Input image is grayscale -> in_channels = 1 instead of 3 (COCO)
-        backbone.body.conv1 = Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+        # backbone.body.conv1 = Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
 
         if not hasattr(backbone, "out_channels"):
             raise ValueError(
@@ -164,12 +163,19 @@ class EllipseRCNN(GeneralizedRCNN, pl.LightningModule):
 
         super().__init__(backbone, rpn, roi_heads, transform)
 
+
+class EllipseRCNNLightning(pl.LightningModule):
+    def __init__(self, model: EllipseRCNN, **kwargs: Any):
+        super().__init__()
+        self.model = model
+        self.save_hyperparameters(ignore=["model"])
+
     def configure_optimizers(self) -> Optimizer:
-        return SGD(self.parameters(), lr=0.005, momentum=0.9, weight_decay=1e-4)
+        return SGD(self.model.parameters(), lr=0.005, momentum=0.9, weight_decay=1e-4)
 
     def training_step(self, batch: CollatedBatchType, batch_idx: int = 0) -> torch.Tensor:
         images, targets = batch
-        loss_dict = self(images, targets)
+        loss_dict = self.model(images, targets)
         for name, value in loss_dict.items():
             self.log(name, value, prog_bar=True, logger=True, on_step=True)
 
