@@ -133,4 +133,10 @@ data/
 .ruff_cache/
 .idea/
 lightning_logs/
+
+# VSCode
+.vscode/
+
+
+# Poetry
 poetry.lock

@@ -32,7 +32,7 @@ def adjugate_matrix(matrix: torch.Tensor) -> torch.Tensor:
     return cofactor.T
 
 
-@torch.jit.script
+# @torch.jit.script
 def unimodular_matrix(matrix: torch.Tensor) -> torch.Tensor:
     """Rescale matrix such that det(ellipses) = 1, in other words, make it unimodular. Doest not work with tensors
     of dtype torch.float64.
@@ -51,7 +51,7 @@ def unimodular_matrix(matrix: torch.Tensor) -> torch.Tensor:
     return (torch.sign(val) * torch.pow(torch.abs(val), 1.0 / 3.0))[..., None, None] * matrix
 
 
-# @torch.jit.script
+@torch.jit.script
 def ellipse_to_conic_matrix(
     a: torch.Tensor,
     b: torch.Tensor,
@@ -59,7 +59,7 @@ def ellipse_to_conic_matrix(
     y: torch.Tensor = ZERO_TENSOR,
     theta: torch.Tensor = ZERO_TENSOR,
 ) -> torch.Tensor:
-    r"""Returns matrix representation for crater derived from ellipse parameters such that [1]:
+    r"""Returns matrix representation for crater derived from ellipse parameters such that _[1]:
 
       | A = a²(sin θ)² + b²(cos θ)²
       | B = 2(b² - a²) sin θ cos θ
@@ -97,8 +97,8 @@ def ellipse_to_conic_matrix(
     .. [1] https://www.researchgate.net/publication/355490899_Lunar_Crater_Identification_in_Digital_Images
     """
 
-    conic_matrix = torch.empty((len(a), 3, 3), device=a.device, dtype=a.dtype)
-    conic_matrix.requires_grad_(a.requires_grad)
+    # conic_matrix = torch.empty((len(a), 3, 3), device=a.device, dtype=a.dtype)
+    # conic_matrix.requires_grad_(a.requires_grad)
 
     A = (a**2) * torch.sin(theta) ** 2 + (b**2) * torch.cos(theta) ** 2
     B = 2 * ((b**2) - (a**2)) * torch.cos(theta) * torch.sin(theta)
@@ -107,15 +107,15 @@ def ellipse_to_conic_matrix(
     F = -B * x - 2 * C * y
     G = A * (x**2) + B * x * y + C * (y**2) - (a**2) * (b**2)
 
-    conic_matrix[..., 0, 0] = A
-    conic_matrix[..., 1, 1] = C
-    conic_matrix[..., 2, 2] = G
-
-    conic_matrix[..., 1, 0] = conic_matrix[..., 0, 1] = B / 2
-
-    conic_matrix[..., 2, 0] = conic_matrix[..., 0, 2] = D / 2
-
-    conic_matrix[..., 2, 1] = conic_matrix[..., 1, 2] = F / 2
+    # Create (array of) of conic matrix (N, 3, 3)
+    conic_matrix = torch.stack(
+        tensors=(
+            torch.stack((A, B / 2, D / 2), dim=-1),
+            torch.stack((B / 2, C, F / 2), dim=-1),
+            torch.stack((D / 2, F / 2, G), dim=-1)
+        ),
+        dim=-1
+        )
 
     return conic_matrix.squeeze()
 
