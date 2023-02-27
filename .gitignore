@@ -129,14 +129,19 @@ dmypy.json
 .pyre/
 .old
 
+# Data folders
 data/
-.ruff_cache/
-.idea/
 lightning_logs/
+tb_logs/
+
+# Ruff
+.ruff_cache/
 
 # VSCode
 .vscode/
 
-
 # Poetry
 poetry.lock
+
+# PyCharm
+.idea/

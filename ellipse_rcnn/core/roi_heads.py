@@ -10,7 +10,7 @@ from ..utils.conics import ellipse_to_conic_matrix
 
 
 class EllipseRegressor(nn.Module):
-    def __init__(self, in_channels: int = 1024, hidden_size: int = 512, out_features: int = 3):
+    def __init__(self, in_channels: int = 1024, hidden_size: int = 128, out_features: int = 3):
         super().__init__()
 
         self.fc1 = nn.Linear(in_channels, hidden_size)
