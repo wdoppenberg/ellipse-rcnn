@@ -128,3 +128,9 @@ dmypy.json
 # Pyre type checker
 .pyre/
 .old
+
+data/
+.ruff_cache/
+.idea/
+lightning_logs/
+poetry.lock
