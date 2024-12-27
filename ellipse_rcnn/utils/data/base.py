@@ -3,7 +3,11 @@ from typing import Any
 
 from torch.utils.data import Dataset
 
-from ellipse_rcnn.utils.types import TargetDict, ImageTargetTuple, CollatedBatchType, UncollatedBatchType
+from ellipse_rcnn.utils.types import (
+    TargetDict,
+    CollatedBatchType,
+    UncollatedBatchType,
+)
 
 
 def collate_fn(batch: UncollatedBatchType) -> CollatedBatchType:
@@ -52,10 +56,6 @@ class EllipseDatasetBase(ABC, Dataset):
             The target dictionary.
         """
         pass
-
-    @abstractmethod
-    def __getitem__(self, index: int) -> ImageTargetTuple:
-        return self._transform_all(self.load_image(index), self.load_target_dict(index))
 
     @abstractmethod
     def __len__(self) -> int:

@@ -1,1 +1,1 @@
-from .core.model import EllipseRCNN  # noqa: F401
+from .core.model import EllipseRCNN

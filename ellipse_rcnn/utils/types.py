@@ -22,7 +22,9 @@ class PredictionDict(TypedDict):
 
 
 ImageTargetTuple = Tuple[torch.Tensor, TargetDict]  # Tensor shape: (C, H, W)
-CollatedBatchType = Tuple[Tuple[torch.Tensor, ...], Tuple[TargetDict, ...]]  # Tensor shape: (C, H, W)
+CollatedBatchType = Tuple[
+    Tuple[torch.Tensor, ...], Tuple[TargetDict, ...]
+]  # Tensor shape: (C, H, W)
 UncollatedBatchType = List[ImageTargetTuple]
 
 EllipseType = Union[torch.Tensor, Ellipse]

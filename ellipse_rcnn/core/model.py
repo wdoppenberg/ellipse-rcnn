@@ -5,11 +5,10 @@ import pytorch_lightning as pl
 from torch import nn
 from torch.optim import SGD, Optimizer
 from torchvision.ops import MultiScaleRoIAlign
-from torchvision.models import ResNet50_Weights
-from torchvision.models._api import WeightsEnum
+from torchvision.models import ResNet50_Weights, WeightsEnum
 from torchvision.models.detection.rpn import RPNHead, RegionProposalNetwork
 from torchvision.models.detection.transform import GeneralizedRCNNTransform
-from torchvision.models.detection.faster_rcnn import TwoMLPHead, FastRCNNPredictor
+from torchvision.models.detection.faster_rcnn import TwoMLPHead, FastRCNNPredictor  # noqa: F
 from torchvision.models.detection.anchor_utils import AnchorGenerator
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 from torchvision.models.detection.generalized_rcnn import GeneralizedRCNN
@@ -61,9 +60,13 @@ class EllipseRCNN(GeneralizedRCNN):
         ellipse_loss_metric: str = "gaussian-angle",
     ):
         if backbone_name != "resnet50" and weights == ResNet50_Weights.IMAGENET1K_V1:
-            raise ValueError("If backbone_name is not resnet50, weights_enum must be specified")
+            raise ValueError(
+                "If backbone_name is not resnet50, weights_enum must be specified"
+            )
 
-        backbone = resnet_fpn_backbone(backbone_name=backbone_name, weights=weights, trainable_layers=5)
+        backbone = resnet_fpn_backbone(
+            backbone_name=backbone_name, weights=weights, trainable_layers=5
+        )
 
         if not hasattr(backbone, "out_channels"):
             raise ValueError(
@@ -72,15 +75,27 @@ class EllipseRCNN(GeneralizedRCNN):
                 "same for all the levels)"
             )
 
-        assert isinstance(rpn_anchor_generator, (AnchorGenerator, type(None)))
-        assert isinstance(box_roi_pool, (MultiScaleRoIAlign, type(None)))
+        if not isinstance(rpn_anchor_generator, (AnchorGenerator, type(None))):
+            raise TypeError(
+                "rpn_anchor_generator must be an instance of AnchorGenerator or None"
+            )
+
+        if not isinstance(box_roi_pool, (MultiScaleRoIAlign, type(None))):
+            raise TypeError(
+                "box_roi_pool must be an instance of MultiScaleRoIAlign or None"
+            )
 
         if num_classes is not None:
             if box_predictor is not None:
-                raise ValueError("num_classes should be None when box_predictor is specified")
+                raise ValueError(
+                    "num_classes should be None when box_predictor is specified"
+                )
         else:
             if box_predictor is None:
-                raise ValueError("num_classes should not be None when box_predictor " "is not specified")
+                raise ValueError(
+                    "num_classes should not be None when box_predictor "
+                    "is not specified"
+                )
 
         out_channels = backbone.out_channels
 
@@ -89,10 +104,16 @@ class EllipseRCNN(GeneralizedRCNN):
             aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
             rpn_anchor_generator = AnchorGenerator(anchor_sizes, aspect_ratios)
         if rpn_head is None:
-            rpn_head = RPNHead(out_channels, rpn_anchor_generator.num_anchors_per_location()[0])
+            rpn_head = RPNHead(
+                out_channels, rpn_anchor_generator.num_anchors_per_location()[0]
+            )
 
-        rpn_pre_nms_top_n = dict(training=rpn_pre_nms_top_n_train, testing=rpn_pre_nms_top_n_test)
-        rpn_post_nms_top_n = dict(training=rpn_post_nms_top_n_train, testing=rpn_post_nms_top_n_test)
+        rpn_pre_nms_top_n = dict(
+            training=rpn_pre_nms_top_n_train, testing=rpn_pre_nms_top_n_test
+        )
+        rpn_post_nms_top_n = dict(
+            training=rpn_post_nms_top_n_train, testing=rpn_post_nms_top_n_test
+        )
 
         rpn = RegionProposalNetwork(
             rpn_anchor_generator,
@@ -110,30 +131,44 @@ class EllipseRCNN(GeneralizedRCNN):
         default_representation_size = 1024
 
         if box_roi_pool is None:
-            box_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3"], output_size=7, sampling_ratio=2)
+            box_roi_pool = MultiScaleRoIAlign(
+                featmap_names=["0", "1", "2", "3"], output_size=7, sampling_ratio=2
+            )
 
         if box_head is None:
             resolution = box_roi_pool.output_size[0]
             if isinstance(resolution, int):
-                box_head = TwoMLPHead(out_channels * resolution**2, default_representation_size)
+                box_head = TwoMLPHead(
+                    out_channels * resolution**2, default_representation_size
+                )
             else:
-                raise ValueError("resolution should be an int but is {}".format(resolution))
+                raise ValueError(
+                    "resolution should be an int but is {}".format(resolution)
+                )
 
         if box_predictor is None:
             box_predictor = FastRCNNPredictor(default_representation_size, num_classes)
 
         if ellipse_roi_pool is None:
-            ellipse_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3"], output_size=7, sampling_ratio=2)
+            ellipse_roi_pool = MultiScaleRoIAlign(
+                featmap_names=["0", "1", "2", "3"], output_size=7, sampling_ratio=2
+            )
 
         if ellipse_head is None:
             resolution = box_roi_pool.output_size[0]
             if isinstance(resolution, int):
-                ellipse_head = TwoMLPHead(out_channels * resolution**2, default_representation_size)
+                ellipse_head = TwoMLPHead(
+                    out_channels * resolution**2, default_representation_size
+                )
             else:
-                raise ValueError("resolution should be an int but is {}".format(resolution))
+                raise ValueError(
+                    "resolution should be an int but is {}".format(resolution)
+                )
 
         if ellipse_predictor is None:
-            ellipse_predictor = EllipseRegressor(default_representation_size, num_classes)
+            ellipse_predictor = EllipseRegressor(
+                default_representation_size, num_classes
+            )
 
         roi_heads = EllipseRoIHeads(
             # Box
@@ -166,12 +201,12 @@ class EllipseRCNN(GeneralizedRCNN):
 
 class EllipseRCNNLightning(pl.LightningModule):
     def __init__(
-            self,
-            model: EllipseRCNN,
-            lr: float = 1e-4,
-            momentum: float = 0.9,
-            weight_decay: float = 1e-4,
-        ):
+        self,
+        model: EllipseRCNN,
+        lr: float = 1e-4,
+        momentum: float = 0.9,
+        weight_decay: float = 1e-4,
+    ):
         super().__init__()
         self.model = model
         self.save_hyperparameters(ignore=["model"])
@@ -179,7 +214,9 @@ class EllipseRCNNLightning(pl.LightningModule):
     def configure_optimizers(self) -> Optimizer:
         return SGD(self.model.parameters(), lr=0.005, momentum=0.9, weight_decay=1e-4)
 
-    def training_step(self, batch: CollatedBatchType, batch_idx: int = 0) -> torch.Tensor:
+    def training_step(
+        self, batch: CollatedBatchType, batch_idx: int = 0
+    ) -> torch.Tensor:
         images, targets = batch
         loss_dict = self.model(images, targets)
         for name, value in loss_dict.items():

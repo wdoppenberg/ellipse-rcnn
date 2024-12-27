@@ -48,7 +48,9 @@ def unimodular_matrix(matrix: torch.Tensor) -> torch.Tensor:
         Unimodular version of input matrix.
     """
     val = 1.0 / torch.det(matrix)
-    return (torch.sign(val) * torch.pow(torch.abs(val), 1.0 / 3.0))[..., None, None] * matrix
+    return (torch.sign(val) * torch.pow(torch.abs(val), 1.0 / 3.0))[
+        ..., None, None
+    ] * matrix
 
 
 @torch.jit.script
@@ -100,29 +102,37 @@ def ellipse_to_conic_matrix(
     # conic_matrix = torch.empty((len(a), 3, 3), device=a.device, dtype=a.dtype)
     # conic_matrix.requires_grad_(a.requires_grad)
 
-    A = (a**2) * torch.sin(theta) ** 2 + (b**2) * torch.cos(theta) ** 2
-    B = 2 * ((b**2) - (a**2)) * torch.cos(theta) * torch.sin(theta)
-    C = (a**2) * torch.cos(theta) ** 2 + b**2 * torch.sin(theta) ** 2
+    sin_theta = torch.sin(theta)
+    cos_theta = torch.cos(theta)
+
+    a2 = a**2
+    b2 = b**2
+
+    A = a2 * sin_theta**2 + b2 * cos_theta**2
+    B = 2 * (b2 - a2) * sin_theta * cos_theta
+    C = a2 * cos_theta**2 + b2 * sin_theta**2
     D = -2 * A * x - B * y
     F = -B * x - 2 * C * y
-    G = A * (x**2) + B * x * y + C * (y**2) - (a**2) * (b**2)
+    G = A * (x**2) + B * x * y + C * (y**2) - a2 * b2
 
     # Create (array of) of conic matrix (N, 3, 3)
     conic_matrix = torch.stack(
         tensors=(
             torch.stack((A, B / 2, D / 2), dim=-1),
             torch.stack((B / 2, C, F / 2), dim=-1),
-            torch.stack((D / 2, F / 2, G), dim=-1)
+            torch.stack((D / 2, F / 2, G), dim=-1),
         ),
-        dim=-1
-        )
+        dim=-1,
+    )
 
     return conic_matrix.squeeze()
 
 
 def conic_center(conic_matrix: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """Returns center of ellipse in 2D cartesian coordinate system."""
-    centers = (torch.inverse(conic_matrix[..., :2, :2]) @ -conic_matrix[..., :2, 2][..., None]).squeeze()
+    centers = (
+        torch.inverse(conic_matrix[..., :2, :2]) @ -conic_matrix[..., :2, 2][..., None]
+    ).squeeze()
     return centers[..., 0], centers[..., 1]
 
 
@@ -144,7 +154,13 @@ def ellipse_semi_axes(conic_matrix: torch.Tensor) -> Tuple[torch.Tensor, torch.T
 
 def ellipse_angle(conic_matrix: torch.Tensor) -> torch.Tensor:
     """Returns angle of ellipse in radians w.r.t. x-axis."""
-    return -torch.atan2(2 * conic_matrix[..., 1, 0], conic_matrix[..., 1, 1] - conic_matrix[..., 0, 0]) / 2
+    return (
+        -torch.atan2(
+            2 * conic_matrix[..., 1, 0],
+            conic_matrix[..., 1, 1] - conic_matrix[..., 0, 0],
+        )
+        / 2
+    )
 
 
 def bbox_ellipse(ellipses: torch.Tensor) -> torch.Tensor:
@@ -164,14 +180,22 @@ def bbox_ellipse(ellipses: torch.Tensor) -> torch.Tensor:
     semi_major_axis, semi_minor_axis = ellipse_axes(ellipses)
 
     ux, uy = semi_major_axis * torch.cos(theta), semi_major_axis * torch.sin(theta)
-    vx, vy = semi_minor_axis * torch.cos(theta + pi / 2), semi_minor_axis * torch.sin(theta + pi / 2)
+    vx, vy = (
+        semi_minor_axis * torch.cos(theta + pi / 2),
+        semi_minor_axis * torch.sin(theta + pi / 2),
+    )
 
     box_halfwidth = torch.sqrt(ux**2 + vx**2)
     box_halfheight = torch.sqrt(uy**2 + vy**2)
 
-    bboxes = torch.vstack((cx - box_halfwidth, cy - box_halfheight, cx + box_halfwidth, cy + box_halfheight)).T.to(
-        ellipses
-    )
+    bboxes = torch.vstack(
+        (
+            cx - box_halfwidth,
+            cy - box_halfheight,
+            cx + box_halfwidth,
+            cy + box_halfheight,
+        )
+    ).T.to(ellipses)
 
     return bboxes
 
@@ -228,20 +252,9 @@ class EllipseBase(ABC):
         """Returns device of underlying data."""
         return self._data.device
 
-    def __str__(self) -> str:
-        """Returns string representation of ellipse."""
-        a, b = self.axes
-        x, y = self.center
-        angle = self.angle
-        return f"Ellipse<a={a:.1f}, b={b:.1f}, angle={angle:.1f}, x={x:.1f}, y={y:.1f}, device={self.device}>"
-
     def __repr__(self) -> str:
         """Returns string representation of ellipse."""
         return str(self)
-
-    def __del__(self) -> None:
-        """Deletes underlying data."""
-        del self._data
 
 
 class Ellipse(EllipseBase):
@@ -252,11 +265,23 @@ class Ellipse(EllipseBase):
             raise ValueError("Input array needs to be 3x3!")
         self._data: torch.Tensor = conic_matrix
 
+    def __str__(self) -> str:
+        """Returns string representation of ellipse."""
+        a, b = self.axes
+        x, y = self.center
+        angle = self.angle
+        return f"Ellipse<a={a:.1f}, b={b:.1f}, angle={angle:.1f}, x={x:.1f}, y={y:.1f}, device={self.device}>"
+
 
 class EllipseCollection(EllipseBase):
     """Class for ellipse collection representation."""
 
     def __init__(self, conic_matrices: torch.Tensor):
-        if conic_matrices.shape[-2:] != torch.Size([3, 3]) or len(conic_matrices.shape) > 3:
-            raise ValueError("Input array needs to be Nx3x3!")
+        if (
+            conic_matrices.shape[-2:] != torch.Size([3, 3])
+            or len(conic_matrices.shape) > 3
+        ):
+            raise ValueError(
+                f"Input array needs to be Nx3x3, got {conic_matrices.shape}"
+            )
         self._data: torch.Tensor = conic_matrices

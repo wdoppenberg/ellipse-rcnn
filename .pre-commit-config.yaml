@@ -1,8 +1,6 @@
-# See https://pre-commit.com for more information
-# See https://pre-commit.com/hooks.html for more hooks
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v5.0.0
     hooks:
       - id: trailing-whitespace
         exclude_types: [ jupyter ]
@@ -12,39 +10,37 @@ repos:
       - id: debug-statements
       - id: check-ast
   - repo: https://github.com/charliermarsh/ruff-pre-commit
-    # Ruff version.
-    rev: v0.0.246
+    rev: v0.8.4
     hooks:
       - id: ruff
-        # Respect `exclude` and `extend-exclude` settings.
-        args: [ --fix,
-                --line-length, "120",
-                --target-version, "py310",
+        args: [
+          --fix
         ]
+      - id: ruff-format
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.0.0
+    rev: v1.14.0
     hooks:
       - id: mypy
-        args: [ --python-version=3.10,
-                --disallow-untyped-calls,
-                --disallow-untyped-defs,
-                --disallow-incomplete-defs,
-                --check-untyped-defs,
-                --no-implicit-optional,
-                --warn-redundant-casts,
-                --ignore-missing-imports,
+        args: [
+          --python-version=3.12,
+          --disallow-untyped-calls,
+          --disallow-untyped-defs,
+          --disallow-incomplete-defs,
+          --check-untyped-defs,
+          --no-implicit-optional,
+          --warn-redundant-casts,
+          --ignore-missing-imports,
         ]
+        additional_dependencies:
+          - "types-pytz"
         exclude_types: [ jupyter ]
-  - repo: https://github.com/pycqa/isort
-    rev: 5.12.0
+        exclude: "tests"
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.8.1
     hooks:
-      - id: isort
-        name: isort (python)
-        args: [ --profile=black,
-                --line-length=120,
-                --multi-line=VERTICAL_HANGING_INDENT,
-                --length-sort,
-                --trailing-comma,
-                --force-grid-wrap=0,
-                --use-parentheses
-        ]
+      - id: nbstripout
+  - repo: https://github.com/PyCQA/bandit
+    rev: '1.8.0'
+    hooks:
+      - id: bandit
+        args: [ "-c", "pyproject.toml" ]

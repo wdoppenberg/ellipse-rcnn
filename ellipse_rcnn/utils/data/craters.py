@@ -24,7 +24,9 @@ class CraterEllipseDataset(Dataset):
             # instances.
             start_idx = dataset[self.group]["craters/crater_list_idx"][idx]
             end_idx = dataset[self.group]["craters/crater_list_idx"][idx + 1]
-            ellipse_matrices = torch.tensor(dataset[self.group]["craters/A_craters"][start_idx:end_idx])
+            ellipse_matrices = torch.tensor(
+                dataset[self.group]["craters/A_craters"][start_idx:end_idx]
+            )
 
         boxes = bbox_ellipse(ellipse_matrices)
         area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])

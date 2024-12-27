@@ -2,6 +2,7 @@
 Data loader and module for the FDDB dataset.
 https://vis-www.cs.umass.edu/fddb/
 """
+
 from glob import glob
 from typing import Any, Dict, List, NamedTuple
 from pathlib import Path
@@ -43,16 +44,22 @@ def preprocess_label_files(root_path: str) -> Dict[str, List[FDDBEllipse]]:
     pdf_ellipse_data = pd.DataFrame({"data": ellipse_data})
     pdf_ellipse_data["data_idx"] = pdf_ellipse_data.index
 
-    pdf_file_data_mapping = pdf_file_paths.merge(pdf_ellipse_data, left_on="path", right_on="data", how="left")
+    pdf_file_data_mapping = pdf_file_paths.merge(
+        pdf_ellipse_data, left_on="path", right_on="data", how="left"
+    )
 
-    ellipse_dict: Dict[str, List[FDDBEllipse]] = {str(k): [] for k in pdf_file_paths["path"]}
+    ellipse_dict: Dict[str, List[FDDBEllipse]] = {
+        str(k): [] for k in pdf_file_paths["path"]
+    }
 
     for i, r in pdf_file_data_mapping.iterrows():
         data_idx = r["data_idx"]
         num_ellipses = int(ellipse_data[data_idx + 1])
         file_path = r["path"]
         for j in range(data_idx + 2, data_idx + num_ellipses + 2):
-            a, b, theta, x, y = [float(v) for v in ellipse_data[j].split(" ")[:-1] if len(v) > 0]
+            a, b, theta, x, y = [
+                float(v) for v in ellipse_data[j].split(" ")[:-1] if len(v) > 0
+            ]
             ellipse_params = FDDBEllipse(a, b, theta, x, y)
             ellipse_dict[file_path].append(ellipse_params)
 

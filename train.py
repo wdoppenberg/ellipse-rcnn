@@ -12,8 +12,7 @@ if __name__ == "__main__":
 
     # Add tensorboard logger
     tensorboard_logger = pl.loggers.tensorboard.TensorBoardLogger(
-        save_dir="tb_logs",
-        name="FDDB"
+        save_dir="tb_logs", name="FDDB"
     )
 
     train_loader = DataLoader(
@@ -24,7 +23,7 @@ if __name__ == "__main__":
     )
 
     trainer = pl.Trainer(
-        accelerator='gpu',
+        accelerator="gpu",
         precision=16,
         auto_lr_find=True,
         max_epochs=10,

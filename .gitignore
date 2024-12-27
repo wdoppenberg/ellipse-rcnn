@@ -145,3 +145,4 @@ poetry.lock
 
 # PyCharm
 .idea/
+/uv.lock

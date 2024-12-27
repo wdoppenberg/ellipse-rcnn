@@ -73,7 +73,9 @@ class DetectionPlotter:
         return self.y_min + (self.h / 2)
 
     @classmethod
-    def from_boxes(cls, boxes: torch.Tensor, theta: Optional[torch.Tensor] = None) -> DetectionPlotter:
+    def from_boxes(
+        cls, boxes: torch.Tensor, theta: Optional[torch.Tensor] = None
+    ) -> DetectionPlotter:
         """
         Constructs a DetectionPlotter from a tensor of bounding boxes.
 
@@ -147,7 +149,7 @@ class DetectionPlotter:
             theta = self.theta
 
         ellipses = [
-            Ellipse((cx, cy), w, h, t, **ellipse_kwargs)
+            Ellipse((cx, cy), w, h, angle=t, **ellipse_kwargs)
             for cx, cy, w, h, t in zip(self.cx, self.cy, self.w, self.h, theta)
         ]
         ax.add_collection(PatchCollection(ellipses, match_original=True))
