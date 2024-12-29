@@ -1,4 +1,4 @@
-from typing import List, Tuple, Union, TypedDict
+from typing import List, Tuple, Union, TypedDict, NamedTuple
 
 import torch
 
@@ -28,3 +28,11 @@ CollatedBatchType = Tuple[
 UncollatedBatchType = List[ImageTargetTuple]
 
 EllipseType = Union[torch.Tensor, Ellipse]
+
+
+class EllipseTuple(NamedTuple):
+    a: float
+    b: float
+    theta: float
+    x: float
+    y: float

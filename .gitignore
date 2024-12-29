@@ -146,3 +146,4 @@ poetry.lock
 # PyCharm
 .idea/
 /uv.lock
+/checkpoints

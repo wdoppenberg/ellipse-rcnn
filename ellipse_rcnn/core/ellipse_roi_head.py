@@ -1,17 +1,17 @@
 from typing import Dict, List, Tuple, Optional
 
-import numpy as np
 import torch
 from torch import nn
+from torch.nn import functional as F
 from torchvision.models.detection.roi_heads import RoIHeads, fastrcnn_loss
 
-from .metrics import gaussian_angle_distance, norm_mv_kullback_leibler_divergence
+from .kld import SymmetricKLDLoss
 from ..utils.conics import ellipse_to_conic_matrix
 
 
 class EllipseRegressor(nn.Module):
     def __init__(
-        self, in_channels: int = 1024, hidden_size: int = 128, out_features: int = 3
+        self, in_channels: int = 1024, hidden_size: int = 64, out_features: int = 3
     ):
         super().__init__()
 
@@ -21,47 +21,69 @@ class EllipseRegressor(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.flatten(start_dim=1)
 
-        x = torch.tanh(self.fc1(x))
-        x = torch.tanh(self.fc2(x))
+        x = F.leaky_relu(self.fc1(x))
+        x = F.tanh(self.fc2(x))
 
         return x
-
-
-# TODO: Create targets preprocessor for direct Smooth L1 loss calculation
-def preprocess_ellipse_targets(A_target: torch.Tensor) -> torch.Tensor:
-    pass
 
 
 def postprocess_ellipse_predictor(
     d_a: torch.Tensor, d_b: torch.Tensor, d_angle: torch.Tensor, boxes: torch.Tensor
 ) -> torch.Tensor:
-    box_diag = torch.sqrt(
-        (boxes[:, 2] - boxes[:, 0]) ** 2 + (boxes[:, 2] - boxes[:, 0]) ** 2
+    """Processes elliptical predictor outputs and converts them into conic matrices.
+
+    Parameters
+    ----------
+    d_a : torch.Tensor
+        Logarithm of scale factors for semi-major axes of ellipses.
+    d_b : torch.Tensor
+        Logarithm of scale factors for semi-minor axes of ellipses.
+    d_angle : torch.Tensor
+        Normalized rotation angles of ellipses, scaled between 0 and 1.
+    boxes : torch.Tensor
+        Tensor containing bounding box information, with shape (N, 4). Each box
+        is represented as a 4-tuple (x_min, y_min, x_max, y_max).
+
+    Returns
+    -------
+    torch.Tensor
+        Conic matrix representations of predicted ellipses. Each output matrix
+        corresponds to the real-valued ellipse described by the inputs.
+    """
+    # Pre-compute box width, height, and diagonal
+    box_width = boxes[:, 2] - boxes[:, 0]
+    box_height = boxes[:, 3] - boxes[:, 1]
+    box_diagonal = torch.sqrt(box_width**2 + box_height**2)
+
+    # Compute center coordinates
+    center_x = boxes[:, 0] + (box_width / 2)
+    center_y = boxes[:, 1] + (box_height / 2)
+
+    # Compute ellipse parameters
+    semi_axes = [(torch.exp(param) * box_diagonal / 2) for param in (d_a, d_b)]
+    semi_major_axis, semi_minor_axis = semi_axes
+    rotation_angles = d_angle * torch.pi
+
+    cos_theta = torch.cos(rotation_angles)
+    sin_theta = torch.sin(rotation_angles)
+    rotation_angles = torch.where(
+        cos_theta >= 0,
+        torch.atan2(sin_theta, cos_theta),
+        torch.atan2(-sin_theta, -cos_theta),
     )
-    cx = boxes[:, 0] + ((boxes[:, 2] - boxes[:, 0]) / 2)
-    cy = boxes[:, 1] + ((boxes[:, 3] - boxes[:, 1]) / 2)
 
-    a, b = ((torch.exp(param) * box_diag / 2) for param in (d_a, d_b))
-    theta = d_angle * np.pi / 2
-    ang_cond1 = torch.cos(theta) >= 0
-    ang_cond2 = ~ang_cond1
-
-    if not torch.onnx.is_in_onnx_export():
-        theta[ang_cond1] = torch.atan2(
-            torch.sin(theta[ang_cond1]), torch.cos(theta[ang_cond1])
-        )
-        theta[ang_cond2] = torch.atan2(
-            -torch.sin(theta[ang_cond2]), -torch.cos(theta[ang_cond2])
-        )
-
-    return ellipse_to_conic_matrix(a, b, cx, cy, theta)
+    # Convert ellipse parameters to conic matrix
+    return ellipse_to_conic_matrix(
+        semi_major_axis, semi_minor_axis, center_x, center_y, rotation_angles
+    )
 
 
-def ellipse_loss_KLD(
+def ellipse_loss_kld(
     d_pred: torch.Tensor,
     ellipse_matrix_targets: List[torch.Tensor],
     pos_matched_idxs: List[torch.Tensor],
     boxes: List[torch.Tensor],
+    kld_loss: SymmetricKLDLoss,
 ) -> torch.Tensor:
     A_target = torch.cat(
         [o[idxs] for o, idxs in zip(ellipse_matrix_targets, pos_matched_idxs)], dim=0
@@ -77,33 +99,9 @@ def ellipse_loss_KLD(
 
     A_pred = postprocess_ellipse_predictor(d_a, d_b, d_angle, boxes)
 
-    loss1 = norm_mv_kullback_leibler_divergence(A_pred, A_target)
-    loss2 = norm_mv_kullback_leibler_divergence(A_target, A_pred)
+    loss = kld_loss.forward(A_pred, A_target).clip(0.0, 10.0).mean()
 
-    return (0.5 * loss1 + 0.5 * loss2).mean()
-
-
-def ellipse_loss_GA(
-    d_pred: torch.Tensor,
-    ellipse_matrix_targets: List[torch.Tensor],
-    pos_matched_idxs: List[torch.Tensor],
-    boxes: List[torch.Tensor],
-) -> torch.Tensor:
-    A_target = torch.cat(
-        [o[idxs] for o, idxs in zip(ellipse_matrix_targets, pos_matched_idxs)], dim=0
-    )
-    boxes = torch.cat(boxes, dim=0)
-
-    if A_target.numel() == 0:
-        return d_pred.sum() * 0
-
-    d_a = d_pred[:, 0]
-    d_b = d_pred[:, 1]
-    d_angle = d_pred[:, 2]
-
-    A_pred = postprocess_ellipse_predictor(d_a, d_b, d_angle, boxes)
-
-    return gaussian_angle_distance(A_pred, A_target).mean()
+    return loss
 
 
 class EllipseRoIHeads(RoIHeads):
@@ -123,7 +121,11 @@ class EllipseRoIHeads(RoIHeads):
         ellipse_roi_pool: nn.Module,
         ellipse_head: nn.Module,
         ellipse_predictor: nn.Module,
-        ellipse_loss_metric: str = "gaussian-angle",
+        # Loss parameters
+        kld_shape_only: bool = True,
+        kld_normalize: bool = True,
+        kld_nan_to_num: float = 10.0,
+        loss_scale: float = 1.0,
     ):
         super().__init__(
             box_roi_pool,
@@ -143,12 +145,13 @@ class EllipseRoIHeads(RoIHeads):
         self.ellipse_head = ellipse_head
         self.ellipse_predictor = ellipse_predictor
 
-        if ellipse_loss_metric == "gaussian-angle":
-            self.ellipse_loss_fn = ellipse_loss_GA
-        elif ellipse_loss_metric == "kullback-leibler":
-            self.ellipse_loss_fn = ellipse_loss_KLD
-        else:
-            raise ValueError(f"Ellipse loss function {ellipse_loss_metric} not known.")
+        self.kld_loss = SymmetricKLDLoss(
+            shape_only=kld_shape_only,
+            normalize=kld_normalize,
+            nan_to_num=kld_nan_to_num,
+        )
+        self.ellipse_loss_fn = ellipse_loss_kld
+        self.loss_scale = loss_scale
 
     def has_ellipse_reg(self) -> bool:
         if self.ellipse_roi_pool is None:
@@ -253,11 +256,15 @@ class EllipseRoIHeads(RoIHeads):
                     )
 
                 ellipse_matrix_targets = [t["ellipse_matrices"] for t in targets]
-                rcnn_loss_ellipse = self.ellipse_loss_fn(
-                    ellipse_shapes_normalised,
-                    ellipse_matrix_targets,
-                    pos_matched_idxs,
-                    ellipse_proposals,
+                rcnn_loss_ellipse = (
+                    self.ellipse_loss_fn(
+                        ellipse_shapes_normalised,
+                        ellipse_matrix_targets,
+                        pos_matched_idxs,
+                        ellipse_proposals,
+                        self.kld_loss,
+                    )
+                    * self.loss_scale
                 )
                 loss_ellipse_regressor = {"loss_ellipse": rcnn_loss_ellipse}
             else:

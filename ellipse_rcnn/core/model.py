@@ -1,19 +1,19 @@
-from typing import List, Tuple, Optional
+from types import NoneType
+from typing import List, Tuple, Optional, Any
 
-import torch
 import pytorch_lightning as pl
+import torch
 from torch import nn
-from torch.optim import SGD, Optimizer
-from torchvision.ops import MultiScaleRoIAlign
 from torchvision.models import ResNet50_Weights, WeightsEnum
-from torchvision.models.detection.rpn import RPNHead, RegionProposalNetwork
-from torchvision.models.detection.transform import GeneralizedRCNNTransform
-from torchvision.models.detection.faster_rcnn import TwoMLPHead, FastRCNNPredictor  # noqa: F
 from torchvision.models.detection.anchor_utils import AnchorGenerator
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
+from torchvision.models.detection.faster_rcnn import TwoMLPHead, FastRCNNPredictor  # noqa: F
 from torchvision.models.detection.generalized_rcnn import GeneralizedRCNN
+from torchvision.models.detection.rpn import RPNHead, RegionProposalNetwork
+from torchvision.models.detection.transform import GeneralizedRCNNTransform
+from torchvision.ops import MultiScaleRoIAlign
 
-from .roi_heads import EllipseRoIHeads, EllipseRegressor
+from .ellipse_roi_head import EllipseRoIHeads, EllipseRegressor
 from ..utils.types import CollatedBatchType
 
 
@@ -28,7 +28,7 @@ class EllipseRCNN(GeneralizedRCNN):
         max_size: int = 512,
         image_mean: Optional[List[float]] = None,
         image_std: Optional[List[float]] = None,
-        # RPN parameters
+        # Region Proposal Network parameters
         rpn_anchor_generator: Optional[nn.Module] = None,
         rpn_head: Optional[nn.Module] = None,
         rpn_pre_nms_top_n_train: int = 2000,
@@ -57,7 +57,7 @@ class EllipseRCNN(GeneralizedRCNN):
         ellipse_roi_pool: Optional[nn.Module] = None,
         ellipse_head: Optional[nn.Module] = None,
         ellipse_predictor: Optional[nn.Module] = None,
-        ellipse_loss_metric: str = "gaussian-angle",
+        ellipse_loss_scale: float = 1.0,
     ):
         if backbone_name != "resnet50" and weights == ResNet50_Weights.IMAGENET1K_V1:
             raise ValueError(
@@ -75,12 +75,12 @@ class EllipseRCNN(GeneralizedRCNN):
                 "same for all the levels)"
             )
 
-        if not isinstance(rpn_anchor_generator, (AnchorGenerator, type(None))):
+        if not isinstance(rpn_anchor_generator, (AnchorGenerator, NoneType)):
             raise TypeError(
                 "rpn_anchor_generator must be an instance of AnchorGenerator or None"
             )
 
-        if not isinstance(box_roi_pool, (MultiScaleRoIAlign, type(None))):
+        if not isinstance(box_roi_pool, (MultiScaleRoIAlign, NoneType)):
             raise TypeError(
                 "box_roi_pool must be an instance of MultiScaleRoIAlign or None"
             )
@@ -187,7 +187,7 @@ class EllipseRCNN(GeneralizedRCNN):
             ellipse_roi_pool=ellipse_roi_pool,
             ellipse_head=ellipse_head,
             ellipse_predictor=ellipse_predictor,
-            ellipse_loss_metric=ellipse_loss_metric,
+            loss_scale=ellipse_loss_scale,
         )
 
         if image_mean is None:
@@ -204,25 +204,75 @@ class EllipseRCNNLightning(pl.LightningModule):
         self,
         model: EllipseRCNN,
         lr: float = 1e-4,
-        momentum: float = 0.9,
         weight_decay: float = 1e-4,
     ):
         super().__init__()
         self.model = model
         self.save_hyperparameters(ignore=["model"])
+        self.automatic_optimization = True
 
-    def configure_optimizers(self) -> Optimizer:
-        return SGD(self.model.parameters(), lr=0.005, momentum=0.9, weight_decay=1e-4)
+    def configure_optimizers(self) -> Any:
+        params = [
+            {
+                "params": self.model.roi_heads.ellipse_predictor.parameters(),
+                "lr": self.hparams.lr,
+            },
+            {
+                "params": [
+                    param
+                    for name, param in self.model.named_parameters()
+                    if "ellipse_predictor" not in name
+                ],
+                "lr": self.hparams.lr / 1e1,
+                "weight_decay": self.hparams.weight_decay,
+            },
+        ]
+
+        optimizer = torch.optim.AdamW(params)
+        scheduler = torch.optim.lr_scheduler.LambdaLR(
+            optimizer, lambda epoch: 0.95**epoch
+        )
+        return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler}}
 
     def training_step(
         self, batch: CollatedBatchType, batch_idx: int = 0
     ) -> torch.Tensor:
         images, targets = batch
         loss_dict = self.model(images, targets)
-        for name, value in loss_dict.items():
-            self.log(name, value, prog_bar=True, logger=True, on_step=True)
+        self.log_dict(
+            {f"train/{k}": v for k, v in loss_dict.items()},
+            prog_bar=True,
+            logger=True,
+            on_step=True,
+        )
 
         loss = sum(loss_dict.values())
-        self.log("total_loss", loss, prog_bar=True, logger=True, on_step=True)
+        self.log("train/total_loss", loss, prog_bar=True, logger=True, on_step=True)
 
         return loss
+
+    def validation_step(
+        self, batch: CollatedBatchType, batch_idx: int = 0
+    ) -> torch.Tensor:
+        self.train(True)
+        images, targets = batch
+        loss_dict = self.model(images, targets)
+
+        self.log_dict(
+            {f"val/{k}": v for k, v in loss_dict.items()},
+            logger=True,
+            on_step=False,
+            on_epoch=True,
+        )
+
+        val_loss = sum(loss_dict.values())
+        self.log(
+            "val/total_loss",
+            val_loss,
+            prog_bar=True,
+            logger=True,
+            on_step=False,
+            on_epoch=True,
+        )
+
+        return val_loss

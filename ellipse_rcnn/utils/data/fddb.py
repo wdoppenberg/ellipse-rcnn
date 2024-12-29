@@ -4,28 +4,22 @@ https://vis-www.cs.umass.edu/fddb/
 """
 
 from glob import glob
-from typing import Any, Dict, List, NamedTuple
+from typing import Any
 from pathlib import Path
 
 import torch
 import pandas as pd
 import PIL.Image
 import torchvision.transforms
+import pytorch_lightning as pl
+from torch.utils.data import DataLoader, random_split
 
-from ellipse_rcnn.utils.types import TargetDict, ImageTargetTuple
+from ellipse_rcnn.utils.types import TargetDict, ImageTargetTuple, EllipseTuple
 from ellipse_rcnn.utils.conics import bbox_ellipse, ellipse_to_conic_matrix
-from ellipse_rcnn.utils.data.base import EllipseDatasetBase
+from ellipse_rcnn.utils.data.base import EllipseDatasetBase, collate_fn
 
 
-class FDDBEllipse(NamedTuple):
-    a: float
-    b: float
-    theta: float
-    x: float
-    y: float
-
-
-def preprocess_label_files(root_path: str) -> Dict[str, List[FDDBEllipse]]:
+def preprocess_label_files(root_path: str) -> dict[str, list[EllipseTuple]]:
     label_files = glob(f"{root_path}/labels/*.txt")
 
     file_paths = []
@@ -48,7 +42,7 @@ def preprocess_label_files(root_path: str) -> Dict[str, List[FDDBEllipse]]:
         pdf_ellipse_data, left_on="path", right_on="data", how="left"
     )
 
-    ellipse_dict: Dict[str, List[FDDBEllipse]] = {
+    ellipse_dict: dict[str, list[EllipseTuple]] = {
         str(k): [] for k in pdf_file_paths["path"]
     }
 
@@ -60,14 +54,19 @@ def preprocess_label_files(root_path: str) -> Dict[str, List[FDDBEllipse]]:
             a, b, theta, x, y = [
                 float(v) for v in ellipse_data[j].split(" ")[:-1] if len(v) > 0
             ]
-            ellipse_params = FDDBEllipse(a, b, theta, x, y)
+            ellipse_params = EllipseTuple(a, b, theta, x, y)
             ellipse_dict[file_path].append(ellipse_params)
 
     return ellipse_dict
 
 
 class FDDB(EllipseDatasetBase):
-    def __init__(self, root_path: str, transform: Any = None) -> None:
+    def __init__(
+        self,
+        root_path: str,
+        ellipse_dict: dict[str, list[EllipseTuple]] | None = None,
+        transform: Any = None,
+    ) -> None:
         self.root_path = root_path
         if transform is None:
             self.transform = torchvision.transforms.Compose(
@@ -78,7 +77,9 @@ class FDDB(EllipseDatasetBase):
                     ),
                 ]
             )
-        self.ellipse_dict = preprocess_label_files(root_path)
+        else:
+            self.transform = transform
+        self.ellipse_dict = ellipse_dict or preprocess_label_files(root_path)
 
     def __len__(self) -> int:
         return len(self.ellipse_dict)
@@ -135,4 +136,100 @@ class FDDB(EllipseDatasetBase):
         return image, target_dict
 
     def __repr__(self) -> str:
-        return f"FDDB Dataset with {len(self)} images"
+        return f"FDDB<img={len(self)}>"
+
+    def split(self, fraction: float, shuffle: bool = False) -> tuple["FDDB", "FDDB"]:
+        """
+        Splits the dataset into two subsets based on the given fraction.
+
+        Args:
+            fraction (float): Fraction of the dataset for the first subset (0 < fraction < 1).
+            shuffle (bool): If True, dataset keys will be shuffled before splitting.
+
+        Returns:
+            tuple[FDDB, FDDB]: Two FDDB instances, one with the fraction of data,
+                               and the other with the remaining data.
+        """
+        if not (0 < fraction < 1):
+            raise ValueError("The fraction must be between 0 and 1.")
+
+        keys = list(self.ellipse_dict.keys())
+        if shuffle:
+            import random
+
+            random.shuffle(keys)
+
+        total_length = len(keys)
+        split_index = int(total_length * fraction)
+
+        subset1_keys = keys[:split_index]
+        subset2_keys = keys[split_index:]
+
+        subset1_ellipse_dict = {key: self.ellipse_dict[key] for key in subset1_keys}
+        subset2_ellipse_dict = {key: self.ellipse_dict[key] for key in subset2_keys}
+
+        subset1 = FDDB(
+            self.root_path, ellipse_dict=subset1_ellipse_dict, transform=self.transform
+        )
+        subset2 = FDDB(
+            self.root_path, ellipse_dict=subset2_ellipse_dict, transform=self.transform
+        )
+
+        return subset1, subset2
+
+
+class FDDBLightningDataModule(pl.LightningDataModule):
+    def __init__(
+        self,
+        data_dir: str,
+        batch_size: int = 16,
+        train_fraction: float = 0.8,
+        transform: Any = None,
+        num_workers: int = 0,
+    ) -> None:
+        super().__init__()
+        self.data_dir = data_dir
+        self.batch_size = batch_size
+        self.train_fraction = train_fraction
+        self.transform = transform
+        self.dataset: FDDB | None = None
+        self.train_dataset = None
+        self.val_dataset = None
+        self.num_workers = num_workers
+
+    def prepare_data(self) -> None:
+        # Ensure data preparation or downloading is done here.
+        pass
+
+    def setup(self, stage: str | None = None) -> None:
+        # Instantiate the FDDB dataset and split it into training and validation subsets.
+        self.dataset = FDDB(self.data_dir, transform=self.transform)
+
+        train_size = int(len(self.dataset) * self.train_fraction)
+        val_size = len(self.dataset) - train_size
+        self.train_dataset, self.val_dataset = random_split(
+            self.dataset, [train_size, val_size]
+        )
+
+    def train_dataloader(self) -> DataLoader[ImageTargetTuple]:
+        return DataLoader(
+            self.train_dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+            collate_fn=collate_fn,
+            num_workers=self.num_workers,
+        )
+
+    def val_dataloader(self) -> DataLoader[ImageTargetTuple]:
+        return DataLoader(
+            self.val_dataset,
+            batch_size=self.batch_size,
+            collate_fn=collate_fn,
+            num_workers=self.num_workers,
+        )
+
+    def test_dataloader(self) -> DataLoader[ImageTargetTuple]:
+        # Placeholder for test data; currently returns the validation dataloader as a default.
+        return DataLoader(
+            self.val_dataset, batch_size=self.batch_size, collate_fn=collate_fn
+        )

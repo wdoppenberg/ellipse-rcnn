@@ -5,9 +5,6 @@ from typing import Any, Tuple
 
 import torch
 
-pi = 3.141592653589793
-ZERO_TENSOR = torch.tensor(0.0)
-
 
 @torch.jit.script
 def adjugate_matrix(matrix: torch.Tensor) -> torch.Tensor:
@@ -57,9 +54,9 @@ def unimodular_matrix(matrix: torch.Tensor) -> torch.Tensor:
 def ellipse_to_conic_matrix(
     a: torch.Tensor,
     b: torch.Tensor,
-    x: torch.Tensor = ZERO_TENSOR,
-    y: torch.Tensor = ZERO_TENSOR,
-    theta: torch.Tensor = ZERO_TENSOR,
+    x: torch.Tensor | None = None,
+    y: torch.Tensor | None = None,
+    theta: torch.Tensor | None = None,
 ) -> torch.Tensor:
     r"""Returns matrix representation for crater derived from ellipse parameters such that _[1]:
 
@@ -99,8 +96,9 @@ def ellipse_to_conic_matrix(
     .. [1] https://www.researchgate.net/publication/355490899_Lunar_Crater_Identification_in_Digital_Images
     """
 
-    # conic_matrix = torch.empty((len(a), 3, 3), device=a.device, dtype=a.dtype)
-    # conic_matrix.requires_grad_(a.requires_grad)
+    x = x if x is not None else torch.zeros(1)
+    y = y if y is not None else torch.zeros(1)
+    theta = theta if theta is not None else torch.zeros(1)
 
     sin_theta = torch.sin(theta)
     cos_theta = torch.cos(theta)
@@ -181,8 +179,8 @@ def bbox_ellipse(ellipses: torch.Tensor) -> torch.Tensor:
 
     ux, uy = semi_major_axis * torch.cos(theta), semi_major_axis * torch.sin(theta)
     vx, vy = (
-        semi_minor_axis * torch.cos(theta + pi / 2),
-        semi_minor_axis * torch.sin(theta + pi / 2),
+        semi_minor_axis * torch.cos(theta + torch.pi / 2),
+        semi_minor_axis * torch.sin(theta + torch.pi / 2),
     )
 
     box_halfwidth = torch.sqrt(ux**2 + vx**2)
@@ -211,8 +209,8 @@ class EllipseBase(ABC):
         a: torch.Tensor,
         b: torch.Tensor,
         psi: torch.Tensor,
-        x: torch.Tensor = ZERO_TENSOR,
-        y: torch.Tensor = ZERO_TENSOR,
+        x: torch.Tensor | None = None,
+        y: torch.Tensor | None = None,
     ) -> EllipseBase:
         """Creates ellipse from parametric representation."""
         return cls(ellipse_to_conic_matrix(a, b, x, y, psi))
