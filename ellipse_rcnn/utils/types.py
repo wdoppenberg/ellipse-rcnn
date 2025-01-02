@@ -1,4 +1,4 @@
-from typing import List, Tuple, Union, TypedDict, NamedTuple
+from typing import TypedDict, NamedTuple
 
 import torch
 
@@ -21,13 +21,13 @@ class PredictionDict(TypedDict):
     ellipse_matrices: torch.Tensor
 
 
-ImageTargetTuple = Tuple[torch.Tensor, TargetDict]  # Tensor shape: (C, H, W)
-CollatedBatchType = Tuple[
-    Tuple[torch.Tensor, ...], Tuple[TargetDict, ...]
+type ImageTargetTuple = tuple[torch.Tensor, TargetDict]  # Tensor shape: (C, H, W)
+type CollatedBatchType = tuple[
+    tuple[torch.Tensor, ...], tuple[TargetDict, ...]
 ]  # Tensor shape: (C, H, W)
-UncollatedBatchType = List[ImageTargetTuple]
+type UncollatedBatchType = list[ImageTargetTuple]
 
-EllipseType = Union[torch.Tensor, Ellipse]
+type EllipseType = torch.Tensor | Ellipse
 
 
 class EllipseTuple(NamedTuple):
