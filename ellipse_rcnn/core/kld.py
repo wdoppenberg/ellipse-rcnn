@@ -11,13 +11,18 @@ def mv_kullback_leibler_divergence(
     epsilon: float = 1e-7,
 ) -> torch.Tensor:
     """
-    Compute KL divergence between ellipses represented by their matrices.
+    Compute multi-variate KL divergence between ellipses represented by their matrices.
 
     Args:
         A1, A2: Ellipse matrices of shape (..., 3, 3)
         shape_only: If True, ignores displacement term
         epsilon: Small value for numerical stability
     """
+    
+    # Ensure that batch sizes are equal
+    if A1.shape[:-2] != A2.shape[:-2]:
+        raise ValueError(f"Batch size mismatch: A1 has shape {A1.shape[:-2]}, A2 has shape {A2.shape[:-2]}")
+    
     # Extract the upper 2x2 blocks as covariance matrices
     cov1 = A1[..., :2, :2]
     cov2 = A2[..., :2, :2]
@@ -42,8 +47,8 @@ def mv_kullback_leibler_divergence(
 
     # Log determinant term
     # Clamp determinants to avoid instability
-    det_cov1 = torch.clamp(torch.det(cov1), min=epsilon)
-    det_cov2 = torch.clamp(torch.det(cov2), min=epsilon)
+    det_cov1 = torch.det(cov1).clamp(min=epsilon)
+    det_cov2 = torch.det(cov2).clamp(min=epsilon)
     log_term = torch.log(det_cov2 / det_cov1)
 
     if shape_only:

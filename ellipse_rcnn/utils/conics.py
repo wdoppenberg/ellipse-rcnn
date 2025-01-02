@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Tuple
+from typing import Any
 
 import torch
 
@@ -126,7 +126,7 @@ def ellipse_to_conic_matrix(
     return conic_matrix.squeeze()
 
 
-def conic_center(conic_matrix: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def conic_center(conic_matrix: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Returns center of ellipse in 2D cartesian coordinate system."""
     centers = (
         torch.inverse(conic_matrix[..., :2, :2]) @ -conic_matrix[..., :2, 2][..., None]
@@ -134,7 +134,7 @@ def conic_center(conic_matrix: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor
     return centers[..., 0], centers[..., 1]
 
 
-def ellipse_axes(conic_matrix: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def ellipse_axes(conic_matrix: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Returns major and minor axes of ellipse in 2D cartesian coordinate system."""
     lambdas = (
         torch.linalg.eigvalsh(conic_matrix[..., :2, :2])
@@ -144,7 +144,7 @@ def ellipse_axes(conic_matrix: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor
     return axes[..., 0], axes[..., 1]
 
 
-def ellipse_semi_axes(conic_matrix: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def ellipse_semi_axes(conic_matrix: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Returns semi-major and semi-minor axes of ellipse in 2D cartesian coordinate system."""
     major_axis, minor_axis = ellipse_axes(conic_matrix)
     return major_axis / 2, minor_axis / 2
@@ -216,7 +216,7 @@ class EllipseBase(ABC):
         return cls(ellipse_to_conic_matrix(a, b, x, y, psi))
 
     @property
-    def axes(self) -> Tuple[torch.Tensor, torch.Tensor]:
+    def axes(self) -> tuple[torch.Tensor, torch.Tensor]:
         """Returns semi-major and semi-minor axes of ellipse in 2D cartesian coordinate system."""
         return ellipse_axes(self.matrix)
 
@@ -226,7 +226,7 @@ class EllipseBase(ABC):
         return ellipse_angle(self.matrix)
 
     @property
-    def center(self) -> Tuple[torch.Tensor, torch.Tensor]:
+    def center(self) -> tuple[torch.Tensor, torch.Tensor]:
         """Returns center of ellipse in 2D cartesian coordinate system."""
         return conic_center(self.matrix)
 

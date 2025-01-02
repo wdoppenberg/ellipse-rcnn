@@ -63,11 +63,11 @@ def preprocess_label_files(root_path: str) -> dict[str, list[EllipseTuple]]:
 class FDDB(EllipseDatasetBase):
     def __init__(
         self,
-        root_path: str,
+        root_path: str | Path,
         ellipse_dict: dict[str, list[EllipseTuple]] | None = None,
         transform: Any = None,
     ) -> None:
-        self.root_path = root_path
+        self.root_path = Path(root_path) if isinstance(root_path, str) else root_path
         if transform is None:
             self.transform = torchvision.transforms.Compose(
                 [
