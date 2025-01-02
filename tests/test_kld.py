@@ -4,8 +4,13 @@ from ellipse_rcnn.core.kld import mv_kullback_leibler_divergence
 from ellipse_rcnn.utils.conics import unimodular_matrix, ellipse_to_conic_matrix
 
 
-def sample_parametric_ellipses(batch_size: int, a_range=(2.0, 5.0), b_range=(1.0, 3.0), theta_range=(0.0, 2 * torch.pi),
-                               xy_range=(-1.0, 1.0)) -> tuple[torch.Tensor, ...]:
+def sample_parametric_ellipses(
+    batch_size: int,
+    a_range=(2.0, 5.0),
+    b_range=(1.0, 3.0),
+    theta_range=(0.0, 2 * torch.pi),
+    xy_range=(-1.0, 1.0),
+) -> tuple[torch.Tensor, ...]:
     # Semi-major and semi-minor axes
     a = torch.rand(batch_size) * (a_range[1] - a_range[0]) + a_range[0]
     b = torch.rand(batch_size) * (b_range[1] - b_range[0]) + b_range[0]
@@ -22,9 +27,16 @@ def sample_parametric_ellipses(batch_size: int, a_range=(2.0, 5.0), b_range=(1.0
     return a, b, x, y, theta
 
 
-def sample_conic_ellipses(batch_size: int, a_range=(2.0, 5.0), b_range=(1.0, 3.0), theta_range=(0.0, 2 * torch.pi),
-                               xy_range=(-1.0, 1.0)) -> torch.Tensor:
-    a, b, x, y, theta = sample_parametric_ellipses(batch_size, a_range, b_range, theta_range, xy_range)
+def sample_conic_ellipses(
+    batch_size: int,
+    a_range=(2.0, 5.0),
+    b_range=(1.0, 3.0),
+    theta_range=(0.0, 2 * torch.pi),
+    xy_range=(-1.0, 1.0),
+) -> torch.Tensor:
+    a, b, x, y, theta = sample_parametric_ellipses(
+        batch_size, a_range, b_range, theta_range, xy_range
+    )
     return ellipse_to_conic_matrix(a, b, x, y, theta)
 
 
@@ -118,7 +130,7 @@ def test_mv_kl_divergence_small_vs_large_matrices() -> None:
     Test with one small and one large ellipse matrix (checks numerical stability).
     """
     A1 = torch.eye(3).expand(1, -1, -1) * 1e-3  # Small matrix
-    A2 = torch.eye(3).expand(1, -1, -1) * 1e3   # Large matrix
+    A2 = torch.eye(3).expand(1, -1, -1) * 1e3  # Large matrix
     result = mv_kullback_leibler_divergence(A1, A2)
     assert result.shape == torch.Size([1])
     assert torch.isfinite(result).all()
@@ -129,7 +141,9 @@ def test_mv_kl_divergence_singular_matrices() -> None:
     """
     Test when one or both matrices are singular (determinants are very close to zero).
     """
-    A1 = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]]])  # Singular matrix
+    A1 = torch.tensor(
+        [[[1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]]]
+    )  # Singular matrix
     A2 = torch.eye(3).expand(1, -1, -1)
     result = mv_kullback_leibler_divergence(A1, A2)
     assert result.shape == torch.Size([1])

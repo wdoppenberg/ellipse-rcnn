@@ -124,7 +124,7 @@ class EllipseRoIHeads(RoIHeads):
         # Loss parameters
         kld_shape_only: bool = True,
         kld_normalize: bool = True,
-        kld_nan_to_num: float = 10.0,
+        kld_nan_to_num: float = float(1e4),
         loss_scale: float = 1.0,
     ):
         super().__init__(

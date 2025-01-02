@@ -58,6 +58,7 @@ class EllipseRCNN(GeneralizedRCNN):
         ellipse_head: Optional[nn.Module] = None,
         ellipse_predictor: Optional[nn.Module] = None,
         ellipse_loss_scale: float = 1.0,
+        ellipse_loss_normalize: bool = False,
     ):
         if backbone_name != "resnet50" and weights == ResNet50_Weights.IMAGENET1K_V1:
             raise ValueError(
@@ -188,6 +189,7 @@ class EllipseRCNN(GeneralizedRCNN):
             ellipse_head=ellipse_head,
             ellipse_predictor=ellipse_predictor,
             loss_scale=ellipse_loss_scale,
+            kld_normalize=ellipse_loss_normalize,
         )
 
         if image_mean is None:
@@ -230,7 +232,7 @@ class EllipseRCNNLightning(pl.LightningModule):
 
         optimizer = torch.optim.AdamW(params)
         scheduler = torch.optim.lr_scheduler.LambdaLR(
-            optimizer, lambda epoch: 0.95**epoch
+            optimizer, lambda epoch: 0.90**epoch
         )
         return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler}}
 
@@ -273,6 +275,11 @@ class EllipseRCNNLightning(pl.LightningModule):
             logger=True,
             on_step=False,
             on_epoch=True,
+        )
+
+        self.log(
+            "hp_metric",
+            val_loss,
         )
 
         return val_loss
