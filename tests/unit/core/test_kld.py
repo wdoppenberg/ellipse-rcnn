@@ -37,7 +37,7 @@ def sample_conic_ellipses(
     a, b, x, y, theta = sample_parametric_ellipses(
         batch_size, a_range, b_range, theta_range, xy_range
     )
-    return ellipse_to_conic_matrix(a, b, x, y, theta)
+    return ellipse_to_conic_matrix(a=a, b=b, x=x, y=y, theta=theta)
 
 
 def test_mv_kl_divergence_shape_only_true() -> None:
@@ -76,13 +76,13 @@ def test_mv_kl_divergence_numerical_stability() -> None:
 
 
 def test_mv_kl_divergence_unimodular_matrices() -> None:
-    A1 = unimodular_matrix(torch.eye(3))
-    A2 = unimodular_matrix(torch.eye(3))
-    A1 = A1.expand(2, -1, -1)
-    A2 = A2.expand(2, -1, -1)
+    A1 = sample_conic_ellipses(2)
+    A2 = sample_conic_ellipses(2)
+    A1 = unimodular_matrix(A1)
+    A2 = unimodular_matrix(A2)
     result = mv_kullback_leibler_divergence(A1, A2)
     print("Test mv_kl_divergence_unimodular_matrices: Result =", result)
-    assert torch.allclose(result, torch.tensor([0.0, 0.0]), atol=1e-7)
+    assert torch.allclose(result, torch.tensor([1.4214, 0.9251]), atol=1e-7)
 
 
 def test_mv_kl_divergence_identity_matrices() -> None:

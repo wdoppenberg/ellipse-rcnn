@@ -58,7 +58,7 @@ class EllipseRCNN(GeneralizedRCNN):
         ellipse_head: Optional[nn.Module] = None,
         ellipse_predictor: Optional[nn.Module] = None,
         ellipse_loss_scale: float = 1.0,
-        ellipse_loss_normalize: bool = False,
+        ellipse_loss_normalize: bool = True,
     ):
         if backbone_name != "resnet50" and weights == ResNet50_Weights.IMAGENET1K_V1:
             raise ValueError(
@@ -249,7 +249,7 @@ class EllipseRCNNLightning(pl.LightningModule):
         )
 
         loss = sum(loss_dict.values())
-        self.log("train/total_loss", loss, prog_bar=True, logger=True, on_step=True)
+        self.log("train/loss_total", loss, prog_bar=True, logger=True, on_step=True)
 
         return loss
 
@@ -258,6 +258,7 @@ class EllipseRCNNLightning(pl.LightningModule):
     ) -> torch.Tensor:
         self.train(True)
         images, targets = batch
+
         loss_dict = self.model(images, targets)
 
         self.log_dict(
@@ -269,7 +270,7 @@ class EllipseRCNNLightning(pl.LightningModule):
 
         val_loss = sum(loss_dict.values())
         self.log(
-            "val/total_loss",
+            "val/loss_total",
             val_loss,
             prog_bar=True,
             logger=True,

@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from typing import Any
-
 import torch
 
 
@@ -50,8 +47,9 @@ def unimodular_matrix(matrix: torch.Tensor) -> torch.Tensor:
     ] * matrix
 
 
-@torch.jit.script
+# @torch.jit.script
 def ellipse_to_conic_matrix(
+    *,
     a: torch.Tensor,
     b: torch.Tensor,
     x: torch.Tensor | None = None,
@@ -129,7 +127,7 @@ def ellipse_to_conic_matrix(
 def conic_center(conic_matrix: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Returns center of ellipse in 2D cartesian coordinate system."""
     centers = (
-        torch.inverse(conic_matrix[..., :2, :2]) @ -conic_matrix[..., :2, 2][..., None]
+        torch.linalg.pinv(conic_matrix[..., :2, :2]) @ -conic_matrix[..., :2, 2][..., None]
     ).squeeze()
     return centers[..., 0], centers[..., 1]
 
@@ -197,89 +195,3 @@ def bbox_ellipse(ellipses: torch.Tensor) -> torch.Tensor:
 
     return bboxes
 
-
-class EllipseBase(ABC):
-    @abstractmethod
-    def __init__(self, conic_matrix: torch.Tensor) -> None:
-        self._data = conic_matrix
-
-    @classmethod
-    def from_params(
-        cls,
-        a: torch.Tensor,
-        b: torch.Tensor,
-        psi: torch.Tensor,
-        x: torch.Tensor | None = None,
-        y: torch.Tensor | None = None,
-    ) -> EllipseBase:
-        """Creates ellipse from parametric representation."""
-        return cls(ellipse_to_conic_matrix(a, b, x, y, psi))
-
-    @property
-    def axes(self) -> tuple[torch.Tensor, torch.Tensor]:
-        """Returns semi-major and semi-minor axes of ellipse in 2D cartesian coordinate system."""
-        return ellipse_axes(self.matrix)
-
-    @property
-    def angle(self) -> torch.Tensor:
-        """Returns angle of ellipse in radians w.r.t. x-axis."""
-        return ellipse_angle(self.matrix)
-
-    @property
-    def center(self) -> tuple[torch.Tensor, torch.Tensor]:
-        """Returns center of ellipse in 2D cartesian coordinate system."""
-        return conic_center(self.matrix)
-
-    @property
-    def matrix(self) -> torch.Tensor:
-        """Returns ellipse matrix."""
-        return self._data
-
-    @matrix.setter
-    def matrix(self, other: torch.Tensor) -> None:
-        """Sets ellipse matrix."""
-        if other.shape != torch.Size([3, 3]):
-            raise ValueError("Input array needs to be 3x3!")
-        self._data = other
-
-    def to(self, *args: Any, **kwargs: Any) -> None:
-        """Move underlying data to specified device."""
-        self._data.to(*args, **kwargs)
-
-    def device(self) -> torch.device:
-        """Returns device of underlying data."""
-        return self._data.device
-
-    def __repr__(self) -> str:
-        """Returns string representation of ellipse."""
-        return str(self)
-
-
-class Ellipse(EllipseBase):
-    """Class for ellipse representation."""
-
-    def __init__(self, conic_matrix: torch.Tensor):
-        if conic_matrix.shape != torch.Size([3, 3]):
-            raise ValueError("Input array needs to be 3x3!")
-        self._data: torch.Tensor = conic_matrix
-
-    def __str__(self) -> str:
-        """Returns string representation of ellipse."""
-        a, b = self.axes
-        x, y = self.center
-        angle = self.angle
-        return f"Ellipse<a={a:.1f}, b={b:.1f}, angle={angle:.1f}, x={x:.1f}, y={y:.1f}, device={self.device}>"
-
-
-class EllipseCollection(EllipseBase):
-    """Class for ellipse collection representation."""
-
-    def __init__(self, conic_matrices: torch.Tensor):
-        if (
-            conic_matrices.shape[-2:] != torch.Size([3, 3])
-            or len(conic_matrices.shape) > 3
-        ):
-            raise ValueError(
-                f"Input array needs to be Nx3x3, got {conic_matrices.shape}"
-            )
-        self._data: torch.Tensor = conic_matrices

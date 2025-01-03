@@ -8,7 +8,7 @@ def mv_kullback_leibler_divergence(
     A2: torch.Tensor,
     *,
     shape_only: bool = False,
-    epsilon: float = 1e-7,
+    epsilon: float = 1e-8,
 ) -> torch.Tensor:
     """
     Compute multi-variate KL divergence between ellipses represented by their matrices.
@@ -18,19 +18,16 @@ def mv_kullback_leibler_divergence(
         shape_only: If True, ignores displacement term
         epsilon: Small value for numerical stability
     """
-    
+
     # Ensure that batch sizes are equal
     if A1.shape[:-2] != A2.shape[:-2]:
-        raise ValueError(f"Batch size mismatch: A1 has shape {A1.shape[:-2]}, A2 has shape {A2.shape[:-2]}")
-    
+        raise ValueError(
+            f"Batch size mismatch: A1 has shape {A1.shape[:-2]}, A2 has shape {A2.shape[:-2]}"
+        )
+
     # Extract the upper 2x2 blocks as covariance matrices
     cov1 = A1[..., :2, :2]
     cov2 = A2[..., :2, :2]
-
-    # Add small epsilon to diagonal for stability and ensure numerical robustness
-    eye = torch.eye(2, device=A1.device)
-    cov1 = cov1 + eye * epsilon
-    cov2 = cov2 + eye * epsilon
 
     # Compute centers
     m1 = torch.vstack(conic_center(A1)).T[..., None]
@@ -46,18 +43,17 @@ def mv_kullback_leibler_divergence(
     trace_term = (cov2_inv @ cov1).diagonal(dim2=-2, dim1=-1).sum(1)
 
     # Log determinant term
-    # Clamp determinants to avoid instability
-    det_cov1 = torch.det(cov1).clamp(min=epsilon)
-    det_cov2 = torch.det(cov2).clamp(min=epsilon)
-    log_term = torch.log(det_cov2 / det_cov1)
+    det_cov1 = torch.det(cov1)
+    det_cov2 = torch.det(cov2)
+    log_term = torch.log(det_cov2 / det_cov1).nan_to_num(nan=0.0)
 
     if shape_only:
         displacement_term = 0
     else:
         # Mean difference term
-        displacement_term = torch.clamp(
-            (m1 - m2).transpose(-1, -2) @ cov2_inv @ (m1 - m2), min=epsilon, max=1e5
-        ).squeeze()
+        displacement_term = (
+            (m1 - m2).transpose(-1, -2) @ cov2_inv @ (m1 - m2)
+        ).squeeze().abs()
 
     return 0.5 * (trace_term + displacement_term - 2 + log_term)
 
@@ -66,8 +62,8 @@ def symmetric_kl_divergence(
     A1: torch.Tensor,
     A2: torch.Tensor,
     *,
-    shape_only: bool = True,
-    nan_to_num: float = 10.0,
+    shape_only: bool = False,
+    nan_to_num: float = float(1e4),
     normalize: bool = False,
 ) -> torch.Tensor:
     """
@@ -80,6 +76,9 @@ def symmetric_kl_divergence(
         mv_kullback_leibler_divergence(A2, A1, shape_only=shape_only), nan_to_num
     )
     kl = (kl_12 + kl_21) / 2
+
+    if kl.lt(0).any():
+        raise ValueError("Negative KL divergence encountered.")
 
     if normalize:
         kl = 1 - torch.exp(-kl)

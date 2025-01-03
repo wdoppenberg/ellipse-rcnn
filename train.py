@@ -19,8 +19,8 @@ def train_model(
     weight_decay: float = None,
     lr_min: float = 1e-5,
     lr_max: float = 1e-3,
-    weight_decay_min: float = 1e-6,
-    weight_decay_max: float = 1e-3,
+    weight_decay_min: float = 1e-5,
+    weight_decay_max: float = 1e-2,
 ):
     if iterations > 1:
         print("Warning: Running with multiple iterations.")
@@ -35,25 +35,25 @@ def train_model(
 
         print(f"Using parameters - Learning rate: {lr}, Weight decay: {weight_decay}")
         print(f"Starting iteration {iteration + 1}/{iterations}")
-        model = EllipseRCNN(ellipse_loss_scale=float(1e-2))
+        model = EllipseRCNN(ellipse_loss_scale=float(1e-1))
         pl_model = EllipseRCNNLightning(model, lr=lr, weight_decay=weight_decay)
 
         checkpoint_callback = ModelCheckpoint(
-            monitor="val/total_loss",
+            monitor="val/loss_total",
             dirpath="checkpoints",
-            filename=r"e={epoch:02d}-loss={val/total_loss:.5f}",
+            filename=r"e={epoch:02d}-loss={val/loss_total:.5f}",
             auto_insert_metric_name=False,
             save_top_k=1,
             mode="min",
         )
         early_stopping_callback = EarlyStopping(
-            monitor="val/total_loss",
+            monitor="val/loss_total",
             patience=4,
             mode="min",
         )
         trainer = pl.Trainer(
             accelerator="gpu",
-            precision="16-mixed",
+            precision="32-true",  # 32-bit needed for numerical stability
             max_epochs=30,
             enable_checkpointing=True,
             callbacks=[checkpoint_callback, early_stopping_callback],

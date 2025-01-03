@@ -2,8 +2,6 @@ from typing import TypedDict, NamedTuple
 
 import torch
 
-from .conics import Ellipse
-
 
 class TargetDict(TypedDict):
     boxes: torch.Tensor
@@ -12,6 +10,16 @@ class TargetDict(TypedDict):
     area: torch.Tensor
     iscrowd: torch.Tensor
     ellipse_matrices: torch.Tensor
+
+
+class LossDict(TypedDict, total=False):
+    loss_classifier: torch.Tensor
+    loss_box_reg: torch.Tensor
+    loss_objectness: torch.Tensor
+    loss_rpn_box_reg: torch.Tensor
+    loss_ellipse_kld: torch.Tensor
+    loss_ellipse_smooth_l1: torch.Tensor
+    loss_total: torch.Tensor
 
 
 class PredictionDict(TypedDict):
@@ -27,7 +35,7 @@ type CollatedBatchType = tuple[
 ]  # Tensor shape: (C, H, W)
 type UncollatedBatchType = list[ImageTargetTuple]
 
-type EllipseType = torch.Tensor | Ellipse
+type EllipseType = torch.Tensor
 
 
 class EllipseTuple(NamedTuple):
