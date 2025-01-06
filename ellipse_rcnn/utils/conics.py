@@ -1,4 +1,4 @@
-from __future__ import annotations
+from typing import Literal
 
 import torch
 
@@ -125,27 +125,30 @@ def ellipse_to_conic_matrix(
 
 
 def conic_center(conic_matrix: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    """Returns center of ellipse in 2D cartesian coordinate system."""
-    centers = (
-        torch.linalg.pinv(conic_matrix[..., :2, :2]) @ -conic_matrix[..., :2, 2][..., None]
-    ).squeeze()
+    """Returns center of ellipse in 2D cartesian coordinate system with numerical stability."""
+    # Extract the top-left 2x2 submatrix of the conic matrix
+    A = conic_matrix[..., :2, :2]
+
+    # Add stabilization for pseudoinverse computation by clamping singular values
+    A_pinv = torch.linalg.pinv(A, rcond=torch.finfo(A.dtype).eps)
+
+    # Extract the last two rows for the linear term
+    b = -conic_matrix[..., :2, 2][..., None]
+
+    # Stabilize any potential numerical instabilities
+    centers = torch.matmul(A_pinv, b).squeeze()
+
     return centers[..., 0], centers[..., 1]
 
 
 def ellipse_axes(conic_matrix: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    """Returns major and minor axes of ellipse in 2D cartesian coordinate system."""
+    """Returns semi-major and semi-minor axes of ellipse in 2D cartesian coordinate system."""
     lambdas = (
         torch.linalg.eigvalsh(conic_matrix[..., :2, :2])
         / (-torch.det(conic_matrix) / torch.det(conic_matrix[..., :2, :2]))[..., None]
     )
     axes = torch.sqrt(1 / lambdas)
     return axes[..., 0], axes[..., 1]
-
-
-def ellipse_semi_axes(conic_matrix: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    """Returns semi-major and semi-minor axes of ellipse in 2D cartesian coordinate system."""
-    major_axis, minor_axis = ellipse_axes(conic_matrix)
-    return major_axis / 2, minor_axis / 2
 
 
 def ellipse_angle(conic_matrix: torch.Tensor) -> torch.Tensor:
@@ -159,13 +162,18 @@ def ellipse_angle(conic_matrix: torch.Tensor) -> torch.Tensor:
     )
 
 
-def bbox_ellipse(ellipses: torch.Tensor) -> torch.Tensor:
+def bbox_ellipse(
+    ellipses: torch.Tensor,
+    box_type: Literal["xyxy", "xywh", "cxcywh"] = "xyxy",
+) -> torch.Tensor:
     """Converts (array of) ellipse matrices to bounding box tensor with format [xmin, ymin, xmax, ymax].
 
     Parameters
     ----------
     ellipses:
         Array of ellipse matrices
+    box_type:
+        Format of bounding boxes, default is "xyxy"
 
     Returns
     -------
@@ -191,7 +199,11 @@ def bbox_ellipse(ellipses: torch.Tensor) -> torch.Tensor:
             cx + box_halfwidth,
             cy + box_halfheight,
         )
-    ).T.to(ellipses)
+    ).T
+
+    if box_type != "xyxy":
+        from torchvision.ops import boxes as box_ops
+
+        bboxes = box_ops.box_convert(bboxes, in_fmt="xyxy", out_fmt=box_type)
 
     return bboxes
-

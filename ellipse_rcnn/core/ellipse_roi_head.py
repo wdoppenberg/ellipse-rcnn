@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple, Optional, TypedDict
+from typing import Dict, List, Tuple, Optional, TypedDict, NamedTuple, Self
 
 import torch
 from torch import nn
@@ -6,42 +6,132 @@ from torch.nn import functional as F
 from torchvision.models.detection.roi_heads import RoIHeads, fastrcnn_loss
 
 from .kld import SymmetricKLDLoss
-from ..utils.conics import ellipse_to_conic_matrix, conic_center, ellipse_axes, ellipse_angle, unimodular_matrix
+from .wd import WassersteinLoss
+from ..utils.conics import (
+    ellipse_to_conic_matrix,
+    ellipse_axes,
+    ellipse_angle,
+    conic_center,
+)
+
+
+class RegressorPrediction(NamedTuple):
+    """
+    Represents the processed outputs of a regression model as a named tuple.
+
+    This class encapsulates regression model outputs in a structured format, where
+    each attribute corresponds to a specific component of the regression output.
+    These outputs can be directly used for post-processing steps such as transformation
+    into conic matrices or further evaluations of ellipse geometry.
+
+    Attributes
+    ----------
+    d_a : torch.Tensor
+        The normalized semi-major axis scale factor (logarithmic) used to compute
+        the actual semi-major axis length of ellipses.
+    d_b : torch.Tensor
+        The normalized semi-minor axis scale factor (logarithmic) used to compute
+        the actual semi-minor axis length of ellipses.
+    d_x : torch.Tensor
+        The normalized x-coordinate translation factor, specifying the adjustment
+        to the center of bounding boxes for ellipse placement.
+    d_y : torch.Tensor
+        The normalized y-coordinate translation factor, specifying the adjustment
+        to the center of bounding boxes for ellipse placement.
+    d_theta : torch.Tensor
+        The normalized rotation angle factor which is processed to derive the
+        actual rotation angle (in radians) of ellipses.
+
+    Notes
+    -----
+    - The attributes `d_a` and `d_b`, representing scale factors for the semi-major
+      and semi-minor axes, are typically bounded between 0 and 1 using a sigmoid activation.
+    - The attributes `d_x` and `d_y` serve as adjustments to bounding box centers, normalized
+      with respect to the bounding box diagonals.
+    - The attribute `d_theta` is normalized to ensure the rotation angle lies within
+      a valid range (after transformation, typically between -π/2 and π/2 radians).
+    - These normalized outputs are post-processed together with bounding box information
+      to construct actionable ellipse parameters such as their axes lengths, centers,
+      and angles.
+    - This structure simplifies downstream regression tasks, such as conversion into
+      conic matrices or calculation of geometrical losses.
+    """
+
+    d_a: torch.Tensor
+    d_b: torch.Tensor
+    d_theta: torch.Tensor
+
+    @property
+    def device(self) -> torch.device:
+        return self.d_a.device
+
+    @property
+    def dtype(self) -> torch.dtype:
+        return self.d_a.dtype
+
+    def split(self, split_size: list[int] | int, dim: int = 0) -> list[Self]:
+        return [
+            RegressorPrediction(*tensors)
+            for tensors in zip(
+                *[torch.split(attr, split_size, dim=dim) for attr in self]
+            )
+        ]
 
 
 class EllipseRegressor(nn.Module):
-    def __init__(
-        self, in_channels: int = 1024, hidden_size: int = 64, out_features: int = 3
-    ):
+    """
+    EllipseRegressor is a neural network module designed to predict parameters of
+    an ellipse given input features.
+
+    This class is a PyTorch module that uses a feedforward neural network to predict
+    the normalized five parameters of an ellipse: semi-major axis `a`, semi-minor axis `b`, center
+    coordinates (`x`, `y`), and orientation `theta`. The class includes mechanisms
+    for batch normalization and uses Xavier weight initialization for improved
+    training stability and convergence.
+
+    Attributes
+    ----------
+    ffnn : nn.Sequential
+        A feedforward neural network with two hidden layers and ReLU activations.
+    """
+
+    def __init__(self, in_channels: int = 1024, hidden_size: int = 64):
         super().__init__()
+        # Separate prediction heads for better gradient flow
+        self.ffnn = nn.Sequential(
+            nn.Linear(in_channels, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, 3),
+            nn.Tanh(),
+        )
 
-        self.fc1 = nn.Linear(in_channels, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, out_features)
+        # Initialize with small values
+        for lin in self.ffnn:
+            if isinstance(lin, nn.Linear):
+                nn.init.xavier_uniform_(lin.weight, gain=0.01)
+                nn.init.zeros_(lin.bias)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> RegressorPrediction:
         x = x.flatten(start_dim=1)
+        x = self.ffnn(x)
 
-        x = F.leaky_relu(self.fc1(x))
-        x = F.tanh(self.fc2(x))
+        d_a, d_b, d_theta = x.unbind(dim=-1)
 
-        return x
+        return RegressorPrediction(d_a=d_a, d_b=d_b, d_theta=d_theta)
 
 
 def postprocess_ellipse_predictor(
-    d_a: torch.Tensor, d_b: torch.Tensor, d_angle: torch.Tensor, boxes: torch.Tensor
+    pred: RegressorPrediction,
+    box_proposals: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Processes elliptical predictor outputs and converts them into conic matrices.
 
     Parameters
     ----------
-    d_a : torch.Tensor
-        Logarithm of scale factors for semi-major axes of ellipses.
-    d_b : torch.Tensor
-        Logarithm of scale factors for semi-minor axes of ellipses.
-    d_angle : torch.Tensor
-        Normalized rotation angles of ellipses, scaled between 0 and 1.
-    boxes : torch.Tensor
-        Tensor containing bounding box information, with shape (N, 4). Each box
+    pred : RegressorPrediction
+        The output of the elliptical predictor model.
+    box_proposals : torch.Tensor
+        Tensor containing proposed bounding box information, with shape (N, 4). Each box
         is represented as a 4-tuple (x_min, y_min, x_max, y_max).
 
     Returns
@@ -53,20 +143,22 @@ def postprocess_ellipse_predictor(
         - x (torch.Tensor): X-coordinates of the ellipse centers.
         - y (torch.Tensor): Y-coordinates of the ellipse centers.
         - theta (torch.Tensor): Rotation angles (in radians) for the ellipses.
-    
+
     """
+    d_a, d_b, d_theta = pred
+
     # Pre-compute box width, height, and diagonal
-    box_width = boxes[:, 2] - boxes[:, 0]
-    box_height = boxes[:, 3] - boxes[:, 1]
-    box_diagonal = torch.sqrt(box_width**2 + box_height**2)
+    box_width = box_proposals[:, 2] - box_proposals[:, 0]
+    box_height = box_proposals[:, 3] - box_proposals[:, 1]
+    box_diag = torch.sqrt(box_width**2 + box_height**2)
 
-    # Compute center coordinates
-    x = boxes[:, 0] + (box_width / 2)
-    y = boxes[:, 1] + (box_height / 2)
+    a = box_diag * d_a.exp()
+    b = box_diag * d_b.exp()
 
-    # Compute ellipse parameters
-    a, b = ((torch.exp(param) * box_diagonal / 2) for param in (d_a, d_b))
-    theta = d_angle * torch.pi
+    box_x = box_proposals[:, 0] + box_width * 0.5
+    box_y = box_proposals[:, 1] + box_height * 0.5
+
+    theta = (d_theta * 2.0 - 1.0) * (torch.pi / 2)
 
     cos_theta = torch.cos(theta)
     sin_theta = torch.sin(theta)
@@ -76,54 +168,75 @@ def postprocess_ellipse_predictor(
         torch.atan2(-sin_theta, -cos_theta),
     )
 
-    return a, b, x, y, theta
+    return a, b, box_x, box_y, theta
 
 
 class EllipseLossDict(TypedDict):
     loss_ellipse_kld: torch.Tensor
     loss_ellipse_smooth_l1: torch.Tensor
+    loss_ellipse_wasserstein: torch.Tensor
 
 
 def ellipse_loss(
-    d_pred: torch.Tensor,
+    pred: RegressorPrediction,
     A_target: List[torch.Tensor],
     pos_matched_idxs: List[torch.Tensor],
-    boxes: List[torch.Tensor],
+    box_proposals: List[torch.Tensor],
     kld_loss_fn: SymmetricKLDLoss,
+    wd_loss_fn: WassersteinLoss,
 ) -> EllipseLossDict:
-    A_target = torch.cat(
-        [o[idxs] for o, idxs in zip(A_target, pos_matched_idxs)], dim=0
-    )
-    boxes = torch.cat(boxes, dim=0)
+    pos_matched_idxs_batched = torch.cat(pos_matched_idxs, dim=0)
+    A_target = torch.cat(A_target, dim=0)[pos_matched_idxs_batched]
+
+    box_proposals = torch.cat(box_proposals, dim=0)
 
     if A_target.numel() == 0:
         return {
-            "loss_ellipse_kld": torch.tensor(0.0, device=d_pred.device, dtype=d_pred.dtype),
-            "loss_ellipse_smooth_l1": torch.tensor(0.0, device=d_pred.device, dtype=d_pred.dtype),
+            "loss_ellipse_kld": torch.tensor(0.0, device=pred.device, dtype=pred.dtype),
+            "loss_ellipse_smooth_l1": torch.tensor(
+                0.0, device=pred.device, dtype=pred.dtype
+            ),
+            "loss_ellipse_wasserstein": torch.tensor(
+                0.0, device=pred.device, dtype=pred.dtype
+            ),
         }
 
-    d_a = d_pred[:, 0]
-    d_b = d_pred[:, 1]
-    d_angle = d_pred[:, 2]
-
-    a, b, x, y, theta = postprocess_ellipse_predictor(d_a, d_b, d_angle, boxes)
-    
     a_target, b_target = ellipse_axes(A_target)
-    x_target, y_target = conic_center(A_target)
     theta_target = ellipse_angle(A_target)
 
+    # Box proposal parameters
+    box_width = box_proposals[:, 2] - box_proposals[:, 0]
+    box_height = box_proposals[:, 3] - box_proposals[:, 1]
+    box_diag = torch.sqrt(box_width**2 + box_height**2).clamp(min=1e-6)
+
+    # Normalize target variables
+    da_target = (a_target / box_diag).log()
+    db_target = (b_target / box_diag).log()
+    dtheta_target = (theta_target / (torch.pi / 2) + 1) / 2
+
+    # Direct parameter losses
+    d_a, d_b, d_theta = pred
+
+    pred_t = torch.stack([d_a, d_b, d_theta], dim=1)
+    target_t = torch.stack([da_target, db_target, dtheta_target], dim=1)
+
+    loss_smooth_l1 = F.smooth_l1_loss(pred_t, target_t, beta=(1 / 9), reduction="sum")
+    loss_smooth_l1 /= box_proposals.shape[0]
+    loss_smooth_l1 = loss_smooth_l1.nan_to_num(nan=0.0).clip(max=float(1e4))
+
+    a, b, x, y, theta = postprocess_ellipse_predictor(pred, box_proposals)
+
     A_pred = ellipse_to_conic_matrix(a=a, b=b, theta=theta, x=x, y=y)
-    # A_pred = unimodular_matrix(A_pred)
-    
-    loss_kld = kld_loss_fn.forward(A_pred, A_target).nan_to_num(nan=0.).clip(max=float(1e4)).mean()
-    
-    loss_smooth_l1 = F.smooth_l1_loss(
-        torch.stack([a, b, x, y, theta], dim=1),
-        torch.stack([a_target, b_target, x_target, y_target, theta_target], dim=1)
-    ).nan_to_num(nan=float(1e4))
 
+    loss_kld = kld_loss_fn.forward(A_pred, A_target).clip(max=float(1e4)).mean() * 0.1
+    loss_wd = torch.zeros(1, device=pred.device, dtype=pred.dtype)
+    # loss_wd = wd_loss_fn.forward(A_pred, A_target).clip(max=float(1e4)).mean() * 0.1
 
-    return {"loss_ellipse_kld": loss_kld, "loss_ellipse_smooth_l1": loss_smooth_l1}
+    return {
+        "loss_ellipse_kld": loss_kld,
+        "loss_ellipse_smooth_l1": loss_smooth_l1,
+        "loss_ellipse_wasserstein": loss_wd,
+    }
 
 
 class EllipseRoIHeads(RoIHeads):
@@ -145,8 +258,9 @@ class EllipseRoIHeads(RoIHeads):
         ellipse_predictor: nn.Module,
         # Loss parameters
         kld_shape_only: bool = False,
-        kld_normalize: bool = True,
-        kld_nan_to_num: float = float(1e4),
+        kld_normalize: bool = False,
+        # Numerical stability parameters
+        nan_to_num: float = 10.0,
         loss_scale: float = 1.0,
     ):
         super().__init__(
@@ -170,7 +284,11 @@ class EllipseRoIHeads(RoIHeads):
         self.kld_loss = SymmetricKLDLoss(
             shape_only=kld_shape_only,
             normalize=kld_normalize,
-            nan_to_num=kld_nan_to_num,
+            nan_to_num=nan_to_num,
+        )
+        self.wd_loss = WassersteinLoss(
+            nan_to_num=nan_to_num,
+            normalize=kld_normalize,
         )
         self.loss_scale = loss_scale
 
@@ -183,9 +301,7 @@ class EllipseRoIHeads(RoIHeads):
             return False
         return True
 
-    def postprocess_ellipse_regressions(
-        self
-    ):
+    def postprocess_ellipse_regressions(self):
         pass
 
     def forward(
@@ -283,13 +399,14 @@ class EllipseRoIHeads(RoIHeads):
 
                 ellipse_matrix_targets = [t["ellipse_matrices"] for t in targets]
                 rcnn_loss_ellipse = ellipse_loss(
-                        ellipse_shapes_normalised,
-                        ellipse_matrix_targets,
-                        pos_matched_idxs,
-                        ellipse_box_proposals,
-                        self.kld_loss,
-                    )
-                
+                    ellipse_shapes_normalised,
+                    ellipse_matrix_targets,
+                    pos_matched_idxs,
+                    ellipse_box_proposals,
+                    self.kld_loss,
+                    self.wd_loss,
+                )
+
                 if self.loss_scale != 1.0:
                     rcnn_loss_ellipse["loss_ellipse_kld"] *= self.loss_scale
                     rcnn_loss_ellipse["loss_ellipse_smooth_l1"] *= self.loss_scale
@@ -297,17 +414,15 @@ class EllipseRoIHeads(RoIHeads):
                 loss_ellipse_regressor.update(rcnn_loss_ellipse)
             else:
                 ellipses_per_image = [lbl.shape[0] for lbl in labels]
-                for e_l, r, box in zip(
+                for pred, r, box in zip(
                     ellipse_shapes_normalised.split(ellipses_per_image, dim=0),
                     result,
                     ellipse_box_proposals,
                 ):
-                    d_a = e_l[:, 0]
-                    d_b = e_l[:, 1]
-                    d_angle = e_l[:, 2]
-                    r["ellipse_matrices"] = postprocess_ellipse_predictor(
-                        d_a, d_b, d_angle, box
-                    )
+                    a, b, x, y, theta = postprocess_ellipse_predictor(pred, box)
+                    A_pred = ellipse_to_conic_matrix(a=a, b=b, theta=theta, x=x, y=y)
+                    r["ellipse_matrices"] = A_pred
+                    # r["boxes"] = bbox_ellipse(A_pred)
 
             losses.update(loss_ellipse_regressor)
 

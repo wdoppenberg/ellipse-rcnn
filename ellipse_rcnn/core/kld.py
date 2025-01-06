@@ -8,7 +8,6 @@ def mv_kullback_leibler_divergence(
     A2: torch.Tensor,
     *,
     shape_only: bool = False,
-    epsilon: float = 1e-8,
 ) -> torch.Tensor:
     """
     Compute multi-variate KL divergence between ellipses represented by their matrices.
@@ -16,7 +15,6 @@ def mv_kullback_leibler_divergence(
     Args:
         A1, A2: Ellipse matrices of shape (..., 3, 3)
         shape_only: If True, ignores displacement term
-        epsilon: Small value for numerical stability
     """
 
     # Ensure that batch sizes are equal
@@ -52,8 +50,8 @@ def mv_kullback_leibler_divergence(
     else:
         # Mean difference term
         displacement_term = (
-            (m1 - m2).transpose(-1, -2) @ cov2_inv @ (m1 - m2)
-        ).squeeze().abs()
+            ((m1 - m2).transpose(-1, -2) @ cov2_inv @ (m1 - m2)).squeeze().abs()
+        )
 
     return 0.5 * (trace_term + displacement_term - 2 + log_term)
 

@@ -58,7 +58,7 @@ class EllipseRCNN(GeneralizedRCNN):
         ellipse_head: Optional[nn.Module] = None,
         ellipse_predictor: Optional[nn.Module] = None,
         ellipse_loss_scale: float = 1.0,
-        ellipse_loss_normalize: bool = True,
+        ellipse_loss_normalize: bool = False,
     ):
         if backbone_name != "resnet50" and weights == ResNet50_Weights.IMAGENET1K_V1:
             raise ValueError(
@@ -155,8 +155,8 @@ class EllipseRCNN(GeneralizedRCNN):
                 featmap_names=["0", "1", "2", "3"], output_size=7, sampling_ratio=2
             )
 
+        resolution = box_roi_pool.output_size[0]
         if ellipse_head is None:
-            resolution = box_roi_pool.output_size[0]
             if isinstance(resolution, int):
                 ellipse_head = TwoMLPHead(
                     out_channels * resolution**2, default_representation_size
@@ -211,30 +211,21 @@ class EllipseRCNNLightning(pl.LightningModule):
         super().__init__()
         self.model = model
         self.save_hyperparameters(ignore=["model"])
-        self.automatic_optimization = True
 
     def configure_optimizers(self) -> Any:
-        params = [
-            {
-                "params": self.model.roi_heads.ellipse_predictor.parameters(),
-                "lr": self.hparams.lr,
-            },
-            {
-                "params": [
-                    param
-                    for name, param in self.model.named_parameters()
-                    if "ellipse_predictor" not in name
-                ],
-                "lr": self.hparams.lr / 1e1,
-                "weight_decay": self.hparams.weight_decay,
-            },
-        ]
-
-        optimizer = torch.optim.AdamW(params)
-        scheduler = torch.optim.lr_scheduler.LambdaLR(
-            optimizer, lambda epoch: 0.90**epoch
+        optimizer = torch.optim.AdamW(
+            self.model.parameters(),
+            lr=self.hparams.lr,
+            weight_decay=self.hparams.weight_decay,
+            amsgrad=True,
         )
-        return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler}}
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", factor=0.5, patience=2, min_lr=1e-6
+        )
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {"scheduler": scheduler, "monitor": "val/loss_total"},
+        }
 
     def training_step(
         self, batch: CollatedBatchType, batch_idx: int = 0
@@ -281,6 +272,11 @@ class EllipseRCNNLightning(pl.LightningModule):
         self.log(
             "hp_metric",
             val_loss,
+        )
+
+        self.log(
+            "lr",
+            self.lr_schedulers().get_last_lr()[0],
         )
 
         return val_loss

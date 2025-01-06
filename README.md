@@ -11,7 +11,30 @@ A PyTorch (Lightning) implementation of Ellipse R-CNN. Originally developed for 
 The methodology is based on [this paper](https://arxiv.org/abs/2001.11584), albeit different in the sense that this model uses the regressed bounding box predictions instead of region proposals as the base for predicted normalised ellipse parameters.
 
 
-## FDDB Training
+## Setup
+
+Make sure you have [uv](https://docs.astral.sh/uv/getting-started/installation/) installed.
+
+From the project root, run:
+
+```shell
+uv sync
+```
+
+This sets up a new virtual environment and installs all packages into it.
+
+Get info on either the training or sample (prediction) script using:
+
+```shell
+uv run train.py --help
+# or
+uv run sample.py --help
+```
+
+Currently the training script only supports training with FDDB. See the required steps for 
+getting & structuring the data below. More datasets will be supported later.
+
+## FDDB Data
 
 ### Download
 Visit https://vis-www.cs.umass.edu/fddb/ and download:

@@ -102,7 +102,7 @@ class FDDB(EllipseDatasetBase):
         if len(ellipse_matrices.shape) == 2:
             ellipse_matrices = ellipse_matrices.unsqueeze(0)
 
-        boxes = bbox_ellipse(ellipse_matrices)
+        boxes = bbox_ellipse(ellipse_matrices, box_type="xyxy")
 
         num_objs = len(boxes)
 

@@ -9,7 +9,6 @@ from ellipse_rcnn.utils.data.fddb import FDDBLightningDataModule
 from pytorch_lightning.callbacks import EarlyStopping
 
 app = typer.Typer()
-datamodule = FDDBLightningDataModule("data/FDDB", num_workers=4)
 
 
 @app.command()
@@ -21,7 +20,9 @@ def train_model(
     lr_max: float = 1e-3,
     weight_decay_min: float = 1e-5,
     weight_decay_max: float = 1e-2,
+    num_workers: int = 4,
 ):
+    datamodule = FDDBLightningDataModule("data/FDDB", num_workers=num_workers)
     if iterations > 1:
         print("Warning: Running with multiple iterations.")
 
@@ -35,20 +36,20 @@ def train_model(
 
         print(f"Using parameters - Learning rate: {lr}, Weight decay: {weight_decay}")
         print(f"Starting iteration {iteration + 1}/{iterations}")
-        model = EllipseRCNN(ellipse_loss_scale=float(1e-1))
+        model = EllipseRCNN(ellipse_loss_scale=float(1e0))
         pl_model = EllipseRCNNLightning(model, lr=lr, weight_decay=weight_decay)
 
         checkpoint_callback = ModelCheckpoint(
             monitor="val/loss_total",
             dirpath="checkpoints",
-            filename=r"e={epoch:02d}-loss={val/loss_total:.5f}",
+            filename=r"loss={val/loss_total:.5f}-e={epoch:02d}",
             auto_insert_metric_name=False,
             save_top_k=1,
             mode="min",
         )
         early_stopping_callback = EarlyStopping(
             monitor="val/loss_total",
-            patience=4,
+            patience=5,
             mode="min",
         )
         trainer = pl.Trainer(

@@ -70,9 +70,7 @@ def test_ellipse_conic_conversion() -> None:
 
     conic_matrices = ellipse_to_conic_matrix(a=a, b=b, x=cx, y=cy, theta=theta)
 
-    assert torch.allclose(
-        torch.cat(ellipse_axes(conic_matrices)), torch.cat((a, b))
-    )
+    assert torch.allclose(torch.cat(ellipse_axes(conic_matrices)), torch.cat((a, b)))
     assert torch.allclose(torch.cat(conic_center(conic_matrices)), torch.cat((cx, cy)))
     assert torch.allclose(ellipse_angle(conic_matrices), theta)
 
@@ -82,9 +80,7 @@ def test_ellipse_conic_conversion() -> None:
 
     conic_matrices = ellipse_to_conic_matrix(a=a, b=b, x=cx, y=cy, theta=theta)
 
-    assert torch.allclose(
-        torch.cat(ellipse_axes(conic_matrices)), torch.cat((a, b))
-    )
+    assert torch.allclose(torch.cat(ellipse_axes(conic_matrices)), torch.cat((a, b)))
     assert torch.allclose(torch.cat(conic_center(conic_matrices)), torch.cat((cx, cy)))
 
     # Since the ellipse is circular, the angle should be 0.
@@ -96,9 +92,7 @@ def test_bbox_ellipse() -> None:
     cx, cy = torch.tensor([1.0, 2.0]), torch.tensor([3.0, 4.0])
     theta = torch.tensor([0.0, 0.0])
 
-    ellipse_matrices = ellipse_to_conic_matrix(
-        a, b, cx, cy, theta
-    )
+    ellipse_matrices = ellipse_to_conic_matrix(a=a, b=b, x=cx, y=cy, theta=theta)
 
     expected_bbox = torch.tensor([[-4, 0.0, 6.0, 6.0], [-4.0, 0.0, 8.0, 8.0]])
     calculated_bbox = bbox_ellipse(ellipse_matrices)
@@ -112,9 +106,7 @@ def test_bbox_ellipse() -> None:
     cx, cy = torch.tensor([0.0]), torch.tensor([0.0])
     theta = torch.tensor([0.0])
 
-    ellipse_matrix = ellipse_to_conic_matrix(
-        a, b, cx, cy, theta
-    )
+    ellipse_matrix = ellipse_to_conic_matrix(a=a, b=b, x=cx, y=cy, theta=theta)
     expected_bbox = torch.tensor([[-2.0, -1.0, 2.0, 1.0]])
 
     calculated_bbox = bbox_ellipse(ellipse_matrix)
@@ -132,7 +124,9 @@ def test_simple_ellipse() -> None:
     cy = torch.tensor([0.0])
     theta = torch.tensor([0.0])  # No rotation
 
-    conic_matrix = ellipse_to_conic_matrix(major_axis, minor_axis, cx, cy, theta)
+    conic_matrix = ellipse_to_conic_matrix(
+        a=major_axis, b=minor_axis, x=cx, y=cy, theta=theta
+    )
 
     # Check axes retrieval
     a_out, b_out = ellipse_axes(conic_matrix)
@@ -159,7 +153,9 @@ def test_unit_circle() -> None:
     cy = torch.tensor([0.0])
     theta = torch.tensor([0.0])  # No rotation
 
-    conic_matrix = ellipse_to_conic_matrix(major_axis, minor_axis, cx, cy, theta)
+    conic_matrix = ellipse_to_conic_matrix(
+        a=major_axis, b=minor_axis, x=cx, y=cy, theta=theta
+    )
 
     # Check outputs
     a_out, b_out = ellipse_axes(conic_matrix)
@@ -185,7 +181,9 @@ def test_shifted_ellipse() -> None:
     cy = torch.tensor([-1.0])
     theta = torch.tensor([0.0])  # No rotation
 
-    conic_matrix = ellipse_to_conic_matrix(major_axis, minor_axis, cx, cy, theta)
+    conic_matrix = ellipse_to_conic_matrix(
+        a=major_axis, b=minor_axis, x=cx, y=cy, theta=theta
+    )
 
     # Check outputs
     a_out, b_out = ellipse_axes(conic_matrix)
@@ -211,7 +209,9 @@ def test_rotated_circle() -> None:
     cy = torch.tensor([0.0])
     theta = torch.tensor([torch.pi / 4])  # 45 degree rotation
 
-    conic_matrix = ellipse_to_conic_matrix(major_axis, minor_axis, cx, cy, theta)
+    conic_matrix = ellipse_to_conic_matrix(
+        a=major_axis, b=minor_axis, x=cx, y=cy, theta=theta
+    )
 
     # Check outputs
     a_out, b_out = ellipse_axes(conic_matrix)
@@ -236,7 +236,9 @@ def test_degenerate_ellipse() -> None:
     cx, cy = torch.tensor([0.0]), torch.tensor([0.0])
     theta = torch.tensor([0.5])  # some angle
 
-    conic_matrix = ellipse_to_conic_matrix(major_axis, minor_axis, cx, cy, theta)
+    conic_matrix = ellipse_to_conic_matrix(
+        a=major_axis, b=minor_axis, x=cx, y=cy, theta=theta
+    )
 
     # Conic matrix should be a 3x3 zero matrix
     expected = torch.zeros(3, 3, dtype=torch.float32)
@@ -252,7 +254,9 @@ def test_circular_ellipse() -> None:
     cx, cy = torch.tensor([3.0, -5.0]), torch.tensor([4.0, 7.0])
     theta = torch.tensor([0.0, torch.pi / 4])  # 0 rotation and 45 degrees
 
-    conic_matrices = ellipse_to_conic_matrix(major_axis, minor_axis, cx, cy, theta)
+    conic_matrices = ellipse_to_conic_matrix(
+        a=major_axis, b=minor_axis, x=cx, y=cy, theta=theta
+    )
 
     # Since it's a circular ellipse, axis lengths and center should be preserved
     assert torch.allclose(torch.cat(conic_center(conic_matrices)), torch.cat((cx, cy)))
@@ -269,9 +273,13 @@ def test_rotated_ellipse() -> None:
     major_axis = torch.tensor([6.0, 10.0, 8.0])
     minor_axis = torch.tensor([4.0, 5.0, 3.0])  # Different eccentricities
     cx, cy = torch.tensor([0.0, -10.0, 1.0]), torch.tensor([2.0, 4.0, -2.0])
-    theta = torch.tensor([0.0, torch.pi / 6, torch.pi / 3])  # No rotation, 30, 60 degrees
+    theta = torch.tensor(
+        [0.0, torch.pi / 6, torch.pi / 3]
+    )  # No rotation, 30, 60 degrees
 
-    conic_matrices = ellipse_to_conic_matrix(major_axis, minor_axis, cx, cy, theta)
+    conic_matrices = ellipse_to_conic_matrix(
+        a=major_axis, b=minor_axis, x=cx, y=cy, theta=theta
+    )
 
     # Test the recovering of ellipse parameters
     assert torch.allclose(
@@ -290,7 +298,9 @@ def test_large_ellipse() -> None:
     cx, cy = torch.tensor([0.0]), torch.tensor([0.0])
     theta = torch.tensor([torch.pi / 4])  # 45 degrees rotation
 
-    conic_matrix = ellipse_to_conic_matrix(major_axis, minor_axis, cx, cy, theta)
+    conic_matrix = ellipse_to_conic_matrix(
+        a=major_axis, b=minor_axis, x=cx, y=cy, theta=theta
+    )
 
     # Test the recovering of ellipse parameters
     a_out, b_out = ellipse_axes(conic_matrix)
@@ -313,7 +323,9 @@ def test_ellipse_extreme_rotation() -> None:
     cx, cy = torch.tensor([2.0]), torch.tensor([-3.0])
     theta = torch.tensor([torch.pi])  # 180 degree rotation
 
-    conic_matrix = ellipse_to_conic_matrix(major_axis, minor_axis, cx, cy, theta)
+    conic_matrix = ellipse_to_conic_matrix(
+        a=major_axis, b=minor_axis, x=cx, y=cy, theta=theta
+    )
 
     # Test recovering of ellipse parameters
     a_out, b_out = ellipse_axes(conic_matrix)
