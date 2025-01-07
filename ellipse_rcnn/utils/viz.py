@@ -13,31 +13,29 @@ from ellipse_rcnn.utils.conics import ellipse_angle, ellipse_center, ellipse_axe
 
 
 def plot_ellipses(
-    A_craters: torch.Tensor,
+    ellipse_params: torch.Tensor,
     figsize: tuple[float, float] = (15, 15),
     plot_centers: bool = False,
     ax: Axes | None = None,
     rim_color="r",
     alpha=1.0,
 ):
-    a_proj, b_proj = ellipse_axes(A_craters)
-    psi_proj = ellipse_angle(A_craters)
-    x_pix_proj, y_pix_proj = ellipse_center(A_craters)
+    a, b, cx, cy, theta = ellipse_params.unbind(-1)
 
-    a_proj, b_proj, psi_proj, x_pix_proj, y_pix_proj = map(
+    a, b, theta, cx, cy = map(
         lambda t: t.detach().cpu().numpy(),
-        (a_proj, b_proj, psi_proj, x_pix_proj, y_pix_proj),
+        (a, b, theta, cx, cy),
     )
 
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize, subplot_kw={"aspect": "equal"})
 
     ec = EllipseCollection(
-        a_proj * 2,
-        b_proj * 2,
-        np.degrees(psi_proj),
+        a * 2,
+        b * 2,
+        np.degrees(theta),
         units="xy",
-        offsets=np.column_stack((x_pix_proj, y_pix_proj)),
+        offsets=np.column_stack((cx, cy)),
         transOffset=ax.transData,
         facecolors="None",
         edgecolors=rim_color,
@@ -46,7 +44,7 @@ def plot_ellipses(
     ax.add_collection(ec)
 
     if plot_centers:
-        crater_centers = ellipse_center(A_craters)
+        crater_centers = ellipse_center(ellipse_params)
         for k, c_i in enumerate(crater_centers):
             x, y = c_i[0], c_i[1]
             ax.text(x.item(), y.item(), str(k), color=rim_color)

@@ -50,16 +50,16 @@ def predict(
         ax.set_aspect("equal")
         ax.grid(True)
         ax.imshow(np.array(image_raw))
-        A_pred = pred[0]["ellipse_matrices"].view(-1, 3, 3)
+        pred = pred[0]["ellipse_matrices"].view(-1, 3, 3)
 
         # Plot ellipses
         plot_ellipses(
-            target["ellipse_matrices"],
+            target["ellipse_params"],
             ax=ax,
             plot_centers=plot_centers,
             rim_color="b",
         )
-        plot_ellipses(A_pred[score_mask], ax=ax, plot_centers=plot_centers)
+        plot_ellipses(pred[score_mask], ax=ax, plot_centers=plot_centers)
 
         # Plot bounding boxes
         plot_bboxes(
