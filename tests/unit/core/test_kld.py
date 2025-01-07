@@ -1,7 +1,7 @@
 import pytest
 import torch
 from ellipse_rcnn.core.kld import mv_kullback_leibler_divergence
-from ellipse_rcnn.utils.conics import unimodular_matrix, ellipse_to_conic_matrix
+from ellipse_rcnn.utils.conics import unimodular_matrix
 
 from . import sample_conic_ellipses
 

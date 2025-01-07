@@ -1,5 +1,5 @@
 import torch
-from ellipse_rcnn.utils.conics import conic_center
+from ellipse_rcnn.utils.conics import ellipse_center
 
 
 def gaussian_angle_distance(A1: torch.Tensor, A2: torch.Tensor) -> torch.Tensor:
@@ -7,8 +7,8 @@ def gaussian_angle_distance(A1: torch.Tensor, A2: torch.Tensor) -> torch.Tensor:
     cov1, cov2 = map(lambda arr: -arr[..., :2, :2], (A1, A2))
 
     # Extract the means by computing conic centers
-    c1_x, c1_y = conic_center(A1)
-    c2_x, c2_y = conic_center(A2)
+    c1_x, c1_y = ellipse_center(A1)
+    c2_x, c2_y = ellipse_center(A2)
 
     # Stack the conic centers into the appropriate shape for computation
     m1 = torch.stack((c1_x, c1_y), dim=-1)[..., None]

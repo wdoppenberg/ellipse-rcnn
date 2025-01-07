@@ -1,6 +1,6 @@
 import torch
 
-from ellipse_rcnn.utils.conics import conic_center
+from ellipse_rcnn.utils.conics import ellipse_center
 
 
 def mv_kullback_leibler_divergence(
@@ -28,8 +28,8 @@ def mv_kullback_leibler_divergence(
     cov2 = A2[..., :2, :2]
 
     # Compute centers
-    m1 = torch.vstack(conic_center(A1)).T[..., None]
-    m2 = torch.vstack(conic_center(A2)).T[..., None]
+    m1 = torch.vstack(ellipse_center(A1)).T[..., None]
+    m2 = torch.vstack(ellipse_center(A2)).T[..., None]
 
     # Compute inverse
     try:

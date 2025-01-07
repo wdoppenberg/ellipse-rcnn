@@ -1,6 +1,6 @@
 import torch
 
-from ellipse_rcnn.utils.conics import conic_center
+from ellipse_rcnn.utils.conics import ellipse_center
 
 
 def wasserstein_distance(
@@ -33,8 +33,8 @@ def wasserstein_distance(
         displacement_term = 0
     else:
         # Compute centers
-        m1 = torch.vstack(conic_center(A1)).T[..., None]
-        m2 = torch.vstack(conic_center(A2)).T[..., None]
+        m1 = torch.vstack(ellipse_center(A1)).T[..., None]
+        m2 = torch.vstack(ellipse_center(A2)).T[..., None]
 
         # Mean difference term
         displacement_term = torch.sum((m1 - m2) ** 2, dim=(1, 2))

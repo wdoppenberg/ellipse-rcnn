@@ -18,7 +18,7 @@ def predict(
         0.6, help="Minimum score threshold for predictions."
     ),
     plot_centers: bool = typer.Option(False, help="Whether to plot ellipse centers."),
-):
+) -> None:
     """
     Load a pretrained model, predict ellipses on the given dataset, and visualize results.
     """

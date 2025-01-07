@@ -15,7 +15,11 @@ import pytorch_lightning as pl
 from torch.utils.data import DataLoader, random_split
 
 from ellipse_rcnn.utils.types import TargetDict, ImageTargetTuple, EllipseTuple
-from ellipse_rcnn.utils.conics import bbox_ellipse, ellipse_to_conic_matrix, conic_center, unimodular_matrix
+from ellipse_rcnn.utils.conics import (
+    bbox_ellipse_matrix,
+    ellipse_to_conic_matrix,
+    ellipse_center, bbox_ellipse,
+)
 from ellipse_rcnn.utils.data.base import EllipseDatasetBase, collate_fn
 
 
@@ -90,19 +94,11 @@ class FDDB(EllipseDatasetBase):
 
         a = torch.tensor([[e.a for e in ellipses_list]])
         b = torch.tensor([[e.b for e in ellipses_list]])
+        cx = torch.tensor([[e.x for e in ellipses_list]])
+        cy = torch.tensor([[e.y for e in ellipses_list]])
         theta = torch.tensor([[e.theta for e in ellipses_list]])
-        x = torch.tensor([[e.x for e in ellipses_list]])
-        y = torch.tensor([[e.y for e in ellipses_list]])
 
-        ellipse_matrices = ellipse_to_conic_matrix(a=a, b=b, x=x, y=y, theta=theta)
-
-        if torch.stack(conic_center(ellipse_matrices)).isnan().any():
-            raise ValueError("NaN values in ellipse matrices. Please check the data.")
-
-        if len(ellipse_matrices.shape) == 2:
-            ellipse_matrices = ellipse_matrices.unsqueeze(0)
-
-        boxes = bbox_ellipse(ellipse_matrices, box_type="xyxy")
+        boxes = bbox_ellipse(a=a, b=b, cx=cx, cy=cy, theta=theta)
 
         num_objs = len(boxes)
 
@@ -117,7 +113,7 @@ class FDDB(EllipseDatasetBase):
             image_id=image_id,
             area=area,
             iscrowd=iscrowd,
-            ellipse_matrices=ellipse_matrices,
+            ellipse_params=torch.stack((a, b, cx, cy, theta), dim=-1).view(-1, 5)
         )
 
         return target

@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import Dataset
 
 from ellipse_rcnn.utils.types import TargetDict, ImageTargetTuple
-from ellipse_rcnn.utils.conics import bbox_ellipse
+from ellipse_rcnn.utils.conics import bbox_ellipse_matrix
 
 
 class CraterEllipseDataset(Dataset):
@@ -28,7 +28,7 @@ class CraterEllipseDataset(Dataset):
                 dataset[self.group]["craters/A_craters"][start_idx:end_idx]
             )
 
-        boxes = bbox_ellipse(ellipse_matrices)
+        boxes = bbox_ellipse_matrix(ellipse_matrices)
         area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
 
         num_objs = len(boxes)

@@ -31,7 +31,7 @@ uv run train.py --help
 uv run sample.py --help
 ```
 
-Currently the training script only supports training with FDDB. See the required steps for 
+Currently the training script only supports training with FDDB. See the required steps for
 getting & structuring the data below. More datasets will be supported later.
 
 ## FDDB Data

@@ -2,7 +2,6 @@ import pytest
 import torch
 
 from ellipse_rcnn.core.wd import wasserstein_distance
-from ellipse_rcnn.utils.conics import unimodular_matrix
 
 from . import sample_conic_ellipses
 

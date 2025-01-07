@@ -1,8 +1,8 @@
 import torch
 
 from ellipse_rcnn.utils.conics import (
-    bbox_ellipse,
-    conic_center,
+    bbox_ellipse_matrix,
+    ellipse_center,
     ellipse_axes,
     ellipse_angle,
     adjugate_matrix,
@@ -71,7 +71,9 @@ def test_ellipse_conic_conversion() -> None:
     conic_matrices = ellipse_to_conic_matrix(a=a, b=b, x=cx, y=cy, theta=theta)
 
     assert torch.allclose(torch.cat(ellipse_axes(conic_matrices)), torch.cat((a, b)))
-    assert torch.allclose(torch.cat(conic_center(conic_matrices)), torch.cat((cx, cy)))
+    assert torch.allclose(
+        torch.cat(ellipse_center(conic_matrices)), torch.cat((cx, cy))
+    )
     assert torch.allclose(ellipse_angle(conic_matrices), theta)
 
     # Test with circular ellipse
@@ -81,7 +83,9 @@ def test_ellipse_conic_conversion() -> None:
     conic_matrices = ellipse_to_conic_matrix(a=a, b=b, x=cx, y=cy, theta=theta)
 
     assert torch.allclose(torch.cat(ellipse_axes(conic_matrices)), torch.cat((a, b)))
-    assert torch.allclose(torch.cat(conic_center(conic_matrices)), torch.cat((cx, cy)))
+    assert torch.allclose(
+        torch.cat(ellipse_center(conic_matrices)), torch.cat((cx, cy))
+    )
 
     # Since the ellipse is circular, the angle should be 0.
     assert torch.allclose(ellipse_angle(conic_matrices), torch.tensor([0.0, 0.0]))
@@ -95,7 +99,7 @@ def test_bbox_ellipse() -> None:
     ellipse_matrices = ellipse_to_conic_matrix(a=a, b=b, x=cx, y=cy, theta=theta)
 
     expected_bbox = torch.tensor([[-4, 0.0, 6.0, 6.0], [-4.0, 0.0, 8.0, 8.0]])
-    calculated_bbox = bbox_ellipse(ellipse_matrices)
+    calculated_bbox = bbox_ellipse_matrix(ellipse_matrices)
 
     assert torch.allclose(calculated_bbox, expected_bbox)
 
@@ -109,7 +113,7 @@ def test_bbox_ellipse() -> None:
     ellipse_matrix = ellipse_to_conic_matrix(a=a, b=b, x=cx, y=cy, theta=theta)
     expected_bbox = torch.tensor([[-2.0, -1.0, 2.0, 1.0]])
 
-    calculated_bbox = bbox_ellipse(ellipse_matrix)
+    calculated_bbox = bbox_ellipse_matrix(ellipse_matrix)
 
     assert torch.allclose(calculated_bbox, expected_bbox)
 
@@ -134,7 +138,7 @@ def test_simple_ellipse() -> None:
     assert torch.allclose(b_out, minor_axis)
 
     # Check center retrieval
-    cx_out, cy_out = conic_center(conic_matrix)
+    cx_out, cy_out = ellipse_center(conic_matrix)
     assert torch.allclose(cx_out, cx)
     assert torch.allclose(cy_out, cy)
 
@@ -159,7 +163,7 @@ def test_unit_circle() -> None:
 
     # Check outputs
     a_out, b_out = ellipse_axes(conic_matrix)
-    cx_out, cy_out = conic_center(conic_matrix)
+    cx_out, cy_out = ellipse_center(conic_matrix)
 
     assert torch.allclose(a_out, major_axis)
     assert torch.allclose(b_out, minor_axis)
@@ -187,7 +191,7 @@ def test_shifted_ellipse() -> None:
 
     # Check outputs
     a_out, b_out = ellipse_axes(conic_matrix)
-    cx_out, cy_out = conic_center(conic_matrix)
+    cx_out, cy_out = ellipse_center(conic_matrix)
 
     assert torch.allclose(a_out, major_axis)
     assert torch.allclose(b_out, minor_axis)
@@ -215,7 +219,7 @@ def test_rotated_circle() -> None:
 
     # Check outputs
     a_out, b_out = ellipse_axes(conic_matrix)
-    cx_out, cy_out = conic_center(conic_matrix)
+    cx_out, cy_out = ellipse_center(conic_matrix)
 
     assert torch.allclose(a_out, major_axis)
     assert torch.allclose(b_out, minor_axis)
@@ -259,7 +263,9 @@ def test_circular_ellipse() -> None:
     )
 
     # Since it's a circular ellipse, axis lengths and center should be preserved
-    assert torch.allclose(torch.cat(conic_center(conic_matrices)), torch.cat((cx, cy)))
+    assert torch.allclose(
+        torch.cat(ellipse_center(conic_matrices)), torch.cat((cx, cy))
+    )
     assert torch.allclose(
         torch.cat(ellipse_axes(conic_matrices)), torch.cat((major_axis, minor_axis))
     )
@@ -285,7 +291,9 @@ def test_rotated_ellipse() -> None:
     assert torch.allclose(
         torch.cat(ellipse_axes(conic_matrices)), torch.cat((major_axis, minor_axis))
     )
-    assert torch.allclose(torch.cat(conic_center(conic_matrices)), torch.cat((cx, cy)))
+    assert torch.allclose(
+        torch.cat(ellipse_center(conic_matrices)), torch.cat((cx, cy))
+    )
     assert torch.allclose(ellipse_angle(conic_matrices), theta)
 
 
@@ -304,7 +312,7 @@ def test_large_ellipse() -> None:
 
     # Test the recovering of ellipse parameters
     a_out, b_out = ellipse_axes(conic_matrix)
-    cx_out, cy_out = conic_center(conic_matrix)
+    cx_out, cy_out = ellipse_center(conic_matrix)
     theta_out = ellipse_angle(conic_matrix)
 
     assert torch.allclose(a_out, major_axis)
@@ -329,7 +337,7 @@ def test_ellipse_extreme_rotation() -> None:
 
     # Test recovering of ellipse parameters
     a_out, b_out = ellipse_axes(conic_matrix)
-    cx_out, cy_out = conic_center(conic_matrix)
+    cx_out, cy_out = ellipse_center(conic_matrix)
     theta_out = ellipse_angle(conic_matrix)
 
     assert torch.allclose(a_out, major_axis)

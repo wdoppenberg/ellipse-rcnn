@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.collections import EllipseCollection, PatchCollection
 from matplotlib.patches import Rectangle
-from ellipse_rcnn.utils.conics import ellipse_angle, conic_center, ellipse_axes
+from ellipse_rcnn.utils.conics import ellipse_angle, ellipse_center, ellipse_axes
 
 
 def plot_ellipses(
@@ -22,7 +22,7 @@ def plot_ellipses(
 ):
     a_proj, b_proj = ellipse_axes(A_craters)
     psi_proj = ellipse_angle(A_craters)
-    x_pix_proj, y_pix_proj = conic_center(A_craters)
+    x_pix_proj, y_pix_proj = ellipse_center(A_craters)
 
     a_proj, b_proj, psi_proj, x_pix_proj, y_pix_proj = map(
         lambda t: t.detach().cpu().numpy(),
@@ -46,7 +46,7 @@ def plot_ellipses(
     ax.add_collection(ec)
 
     if plot_centers:
-        crater_centers = conic_center(A_craters)
+        crater_centers = ellipse_center(A_craters)
         for k, c_i in enumerate(crater_centers):
             x, y = c_i[0], c_i[1]
             ax.text(x.item(), y.item(), str(k), color=rim_color)

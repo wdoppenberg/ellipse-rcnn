@@ -1,4 +1,5 @@
 import pytorch_lightning as pl
+import torch
 import typer
 import random
 
@@ -22,7 +23,9 @@ def train_model(
     weight_decay_max: float = 1e-2,
     num_workers: int = 4,
 ):
-    datamodule = FDDBLightningDataModule("data/FDDB", num_workers=num_workers)
+    datamodule = FDDBLightningDataModule(
+        "data/FDDB", num_workers=num_workers, batch_size=4
+    )
     if iterations > 1:
         print("Warning: Running with multiple iterations.")
 
@@ -53,10 +56,11 @@ def train_model(
             mode="min",
         )
         trainer = pl.Trainer(
-            accelerator="gpu",
+            accelerator="cpu",
             precision="32-true",  # 32-bit needed for numerical stability
             max_epochs=30,
             enable_checkpointing=True,
+            detect_anomaly=True,
             callbacks=[checkpoint_callback, early_stopping_callback],
         )
 
