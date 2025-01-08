@@ -50,7 +50,7 @@ def predict(
         ax.set_aspect("equal")
         ax.grid(True)
         ax.imshow(np.array(image_raw))
-        pred = pred[0]["ellipse_matrices"].view(-1, 3, 3)
+        pred = pred[0]["ellipse_params"].view(-1, 5)
 
         # Plot ellipses
         plot_ellipses(
@@ -69,7 +69,7 @@ def predict(
             rim_color="b",
             alpha=0.5,
         )
-        plot_bboxes(pred[0]["boxes"][score_mask], box_type="xyxy", ax=ax)
+        # plot_bboxes(pred[0]["boxes"][score_mask], box_type="xyxy", ax=ax)
 
     plt.tight_layout()
     plt.show()

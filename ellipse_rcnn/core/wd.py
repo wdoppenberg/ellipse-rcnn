@@ -1,6 +1,6 @@
 import torch
 
-from ellipse_rcnn.utils.conics import ellipse_center
+from ellipse_rcnn.core.ops import ellipse_center
 
 
 def wasserstein_distance(

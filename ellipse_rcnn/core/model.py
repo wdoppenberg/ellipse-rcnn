@@ -13,7 +13,7 @@ from torchvision.models.detection.rpn import RPNHead, RegionProposalNetwork
 from torchvision.models.detection.transform import GeneralizedRCNNTransform
 from torchvision.ops import MultiScaleRoIAlign
 
-from .ellipse_roi_head import EllipseRoIHeads, EllipseRegressor
+from .ellipse_roi_head import EllipseRoIHeads, EllipseRCNNPredictor
 from ..utils.types import CollatedBatchType
 
 
@@ -167,7 +167,7 @@ class EllipseRCNN(GeneralizedRCNN):
                 )
 
         if ellipse_predictor is None:
-            ellipse_predictor = EllipseRegressor(
+            ellipse_predictor = EllipseRCNNPredictor(
                 default_representation_size, num_classes
             )
 

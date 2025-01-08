@@ -132,12 +132,11 @@ def test_edge_cases():
     a = b = torch.tensor([3.0])
     cx = cy = torch.tensor([0.0])
     theta = torch.tensor([0.0])
+    ellipses = torch.stack([a, b, cx, cy, theta])
 
     proposals = torch.tensor([[-3.0, -3.0, 3.0, 3.0]])
 
-    encoded = encode_ellipses(
-        a=a, b=b, cx=cx, cy=cy, theta=theta, proposals=proposals, weights=weights
-    )
+    encoded = encode_ellipses(ellipses, proposals=proposals, weights=weights)
     pred_a, pred_b, pred_x, pred_y, pred_theta = decode_ellipses(
         encoded, proposals, weights
     )

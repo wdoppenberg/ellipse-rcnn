@@ -1,6 +1,6 @@
 import torch
 
-from ellipse_rcnn.utils.conics import ellipse_center
+from ellipse_rcnn.core.ops import ellipse_center
 
 
 def mv_kullback_leibler_divergence(

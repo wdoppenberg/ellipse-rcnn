@@ -15,10 +15,8 @@ import pytorch_lightning as pl
 from torch.utils.data import DataLoader, random_split
 
 from ellipse_rcnn.utils.types import TargetDict, ImageTargetTuple, EllipseTuple
-from ellipse_rcnn.utils.conics import (
-    bbox_ellipse_matrix,
-    ellipse_to_conic_matrix,
-    ellipse_center, bbox_ellipse,
+from ellipse_rcnn.core.ops import (
+    bbox_ellipse,
 )
 from ellipse_rcnn.utils.data.base import EllipseDatasetBase, collate_fn
 
@@ -98,7 +96,9 @@ class FDDB(EllipseDatasetBase):
         cy = torch.tensor([[e.y for e in ellipses_list]])
         theta = torch.tensor([[e.theta for e in ellipses_list]])
 
-        boxes = bbox_ellipse(a=a, b=b, cx=cx, cy=cy, theta=theta)
+        ellipse_params = torch.stack((a, b, cx, cy, theta), dim=-1).view(-1, 5)
+
+        boxes = bbox_ellipse(ellipse_params)
 
         num_objs = len(boxes)
 
@@ -113,7 +113,7 @@ class FDDB(EllipseDatasetBase):
             image_id=image_id,
             area=area,
             iscrowd=iscrowd,
-            ellipse_params=torch.stack((a, b, cx, cy, theta), dim=-1).view(-1, 5)
+            ellipse_params=ellipse_params
         )
 
         return target

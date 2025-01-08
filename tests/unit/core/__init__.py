@@ -1,6 +1,6 @@
 import torch
 
-from ellipse_rcnn.utils.conics import ellipse_to_conic_matrix
+from ellipse_rcnn.core.ops import ellipse_to_conic_matrix
 
 
 def sample_parametric_ellipses(

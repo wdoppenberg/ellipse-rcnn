@@ -1,51 +1,6 @@
 import torch
 
 
-@torch.jit.script
-def adjugate_matrix(matrix: torch.Tensor) -> torch.Tensor:
-    """Return adjugate matrix [1].
-
-    Parameters
-    ----------
-    matrix:
-        Input matrix
-
-    Returns
-    -------
-    torch.Tensor
-        Adjugate of input matrix
-
-    References
-    ----------
-    .. [1] https://en.wikipedia.org/wiki/Adjugate_matrix
-    """
-
-    cofactor = torch.inverse(matrix).T * torch.det(matrix)
-    return cofactor.T
-
-
-# @torch.jit.script
-def unimodular_matrix(matrix: torch.Tensor) -> torch.Tensor:
-    """Rescale matrix such that det(ellipses) = 1, in other words, make it unimodular. Doest not work with tensors
-    of dtype torch.float64.
-
-    Parameters
-    ----------
-    matrix:
-        Matrix input
-
-    Returns
-    -------
-    torch.Tensor
-        Unimodular version of input matrix.
-    """
-    val = 1.0 / torch.det(matrix)
-    return (torch.sign(val) * torch.pow(torch.abs(val), 1.0 / 3.0))[
-        ..., None, None
-    ] * matrix
-
-
-# @torch.jit.script
 def ellipse_to_conic_matrix(
     *,
     a: torch.Tensor,
@@ -162,32 +117,19 @@ def ellipse_angle(conic_matrix: torch.Tensor) -> torch.Tensor:
     )
 
 
-def bbox_ellipse(
-    a: torch.Tensor,
-    b: torch.Tensor,
-    cx: torch.Tensor,
-    cy: torch.Tensor,
-    theta: torch.Tensor,
-) -> torch.Tensor:
+def bbox_ellipse(ellipses: torch.Tensor) -> torch.Tensor:
     """Converts ellipse parameters to bounding box tensors with format [xmin, ymin, xmax, ymax].
 
     Parameters
     ----------
-    a:
-        Semi-major axis
-    b:
-        Semi-minor axis
-    cx:
-        Center x coordinate
-    cy:
-        Center y coordinate
-    theta:
-        Angle in radians
+    ellipses : torch.Tensor
+        Array of ellipse parameters with shape [N, 5] with ordering [a, b, cx, cy, theta]
 
     Returns
     -------
         Array of bounding boxes
     """
+    a, b, cx, cy, theta = ellipses.unbind(-1)
     ux, uy = a * torch.cos(theta), a * torch.sin(theta)
     vx, vy = (
         b * torch.cos(theta + torch.pi / 2),
@@ -228,4 +170,61 @@ def bbox_ellipse_matrix(
     theta = ellipse_angle(ellipses)
     a, b = ellipse_axes(ellipses)
 
-    return bbox_ellipse(a, b, cx, cy, theta)
+    ellipses_p = torch.stack([a, b, cx, cy, theta]).view(-1, 5)
+
+    return bbox_ellipse(ellipses_p)
+
+
+def ellipse_area(ellipses: torch.Tensor) -> torch.Tensor:
+    """Calculates the area of the given ellipses.
+
+    Parameters
+    ----------
+    ellipses : torch.Tensor
+        Array of ellipse parameters with shape [N, 5] with ordering [a, b, cx, cy, theta]
+
+    Returns
+    -------
+        Array of bounding boxes
+    """
+    a, b = ellipses[:, 0], ellipses[:, 1]
+    return a * b * torch.pi
+
+
+def remove_small_ellipses(ellipses: torch.Tensor, min_size: float) -> torch.Tensor:
+    """
+    Remove every ellipse from `ellipses` where either axis is smaller than `min_size`.
+
+    Parameters
+    ----------
+    ellipses : torch.Tensor
+        Array of ellipses with shape `[N, 5]` in the format `[a, b, cx, cy, theta]`:
+        - `a` (float): Semi-major axis.
+        - `b` (float): Semi-minor axis.
+        - `cx` (float): x-coordinate of the center.
+        - `cy` (float): y-coordinate of the center.
+        - `theta` (float): Rotation angle (in radians).
+    min_size : float
+        Minimum size required for each axis (`a` and `b`) of the ellipses.
+
+    Returns
+    -------
+    torch.Tensor
+        Indices of ellipses that have both axes larger than or equal to `min_size`.
+
+    Notes
+    -----
+    Ellipses with at least one axis smaller than `min_size` will be filtered out.
+
+    Examples
+    --------
+    >>> ellipses = torch.tensor([[3.0, 2.0, 0.0, 0.0, 0.0],
+    ...                          [1.0, 1.5, 1.0, 1.0, 0.1],
+    ...                          [4.0, 3.0, 2.0, 3.0, 0.5]])
+    >>> min_size = 2.0
+    >>> remove_small_ellipses(ellipses, min_size)
+    tensor([0, 2])
+    """
+    a, b = ellipses[:, 0], ellipses[:, 1]
+    keep = (a >= min_size) & (b >= min_size)
+    return torch.where(keep)[0]

@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple, Optional, TypedDict, NamedTuple, Self
+from typing import Dict, List, Tuple, Optional, TypedDict
 
 import torch
 from torch import nn
@@ -7,50 +7,85 @@ from torchvision.models.detection.roi_heads import RoIHeads, fastrcnn_loss
 
 from .encoder import EllipseEncoder
 from .kld import SymmetricKLDLoss
-from ..utils.conics import (
+from ellipse_rcnn.core.ops import (
     ellipse_to_conic_matrix,
-    ellipse_axes,
-    ellipse_angle,
+    remove_small_ellipses,
 )
 
 
-class EllipseRegressor(nn.Module):
+class EllipseRCNNPredictor(nn.Module):
     """
-    EllipseRegressor is a neural network module designed to predict encoded parameters of
+    A neural network module designed to predict encoded parameters of
     an ellipse given input features.
-
-    Attributes
-    ----------
-    ffnn : nn.Sequential
-        A feedforward neural network with two hidden layers and ReLU activations.
     """
 
-    def __init__(self, in_channels: int = 1024, hidden_size: int = 64):
+    def __init__(self, in_channels: int, num_classes: int):
         super().__init__()
-        # Separate prediction heads for better gradient flow
-        self.ffnn = nn.Sequential(
-            nn.Linear(in_channels, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, 5),
-            nn.Tanh(),
-        )
+        self.cls_score = nn.Linear(in_channels, num_classes)
+        self.bbox_pred = nn.Linear(in_channels, num_classes * 5)
 
-        # Initialize with small values
-        for lin in self.ffnn:
-            if isinstance(lin, nn.Linear):
-                nn.init.xavier_uniform_(lin.weight, gain=0.01)
-                nn.init.zeros_(lin.bias)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
+        if x.dim() == 4:
+            torch._assert(
+                list(x.shape[2:]) == [1, 1],
+                f"x has the wrong shape, expecting the last two dimensions to be [1,1] instead of {list(x.shape[2:])}",
+            )
         x = x.flatten(start_dim=1)
-        x = self.ffnn(x)
+        scores = self.cls_score(x)
+        bbox_deltas = self.bbox_pred(x)
 
-        return x
+        return scores, bbox_deltas
 
 
 class EllipseLossDict(TypedDict):
     loss_ellipse_kld: torch.Tensor
     loss_ellipse_smooth_l1: torch.Tensor
+
+
+def ellipse_rcnn_loss(
+    class_logits: torch.Tensor,
+    ellipse_regression: torch.Tensor,
+    labels: list[torch.Tensor],
+    regression_targets: list[torch.Tensor],
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Computes the loss for Ellipse R-CNN.
+
+    Args:
+        class_logits (Tensor)
+        ellipse_regression (Tensor)
+        labels (list[BoxList])
+        regression_targets (Tensor)
+
+    Returns:
+        classification_loss (Tensor)
+        ellipse_reg_loss (Tensor)
+    """
+
+    labels = torch.cat(labels, dim=0)
+    regression_targets = torch.cat(regression_targets, dim=0)
+
+    classification_loss = F.cross_entropy(class_logits, labels)
+
+    # get indices that correspond to the regression targets for
+    # the corresponding ground truth labels, to be used with
+    # advanced indexing
+    sampled_pos_inds_subset = torch.where(labels > 0)[0]
+    labels_pos = labels[sampled_pos_inds_subset]
+    N, num_classes = class_logits.shape
+    ellipse_regression = ellipse_regression.reshape(
+        N, ellipse_regression.size(-1) // 5, 5
+    )
+
+    ellipse_reg_loss = F.smooth_l1_loss(
+        ellipse_regression[sampled_pos_inds_subset, labels_pos],
+        regression_targets[sampled_pos_inds_subset],
+        beta=1 / 9,
+        reduction="sum",
+    )
+    ellipse_reg_loss = ellipse_reg_loss / labels.numel()
+
+    return classification_loss, ellipse_reg_loss
 
 
 class EllipseRoIHeads(RoIHeads):
@@ -144,24 +179,27 @@ class EllipseRoIHeads(RoIHeads):
             regression_targets = None
             matched_idxs = None
 
-        box_features = self.box_roi_pool(features, proposals, image_shapes)
-        box_features = self.box_head(box_features)
-        class_logits, box_regression = self.box_predictor(box_features)
+        ellipse_features = self.ellipse_roi_pool(features, proposals, image_shapes)
+        ellipse_features = self.ellipse_head(ellipse_features)
+        class_logits, ellipse_regression = self.ellipse_predictor(ellipse_features)
 
-        result: List[Dict[str, torch.Tensor]] = []
+        result: list[dict[str, torch.Tensor]] = []
         losses = {}
         if self.training:
             if labels is None or regression_targets is None:
                 raise ValueError(
                     "Labels and regression targets must not be None during training"
                 )
-            loss_classifier, loss_box_reg = fastrcnn_loss(
-                class_logits, box_regression, labels, regression_targets
+            loss_classifier, loss_ellipse_reg = ellipse_rcnn_loss(
+                class_logits, ellipse_regression, labels, regression_targets
             )
-            losses = {"loss_classifier": loss_classifier, "loss_box_reg": loss_box_reg}
+            losses = {
+                "loss_classifier": loss_classifier,
+                "loss_ellipse_reg": loss_ellipse_reg,
+            }
         else:
             boxes, scores, labels = self.postprocess_detections(
-                class_logits, box_regression, proposals, image_shapes
+                class_logits, ellipse_regression, proposals, image_shapes
             )
             num_images = len(boxes)
             for i in range(num_images):
@@ -173,65 +211,65 @@ class EllipseRoIHeads(RoIHeads):
                     }
                 )
 
-        ellipse_box_proposals = [p["boxes"] for p in result]
-        if self.training:
-            if matched_idxs is None:
-                raise ValueError("matched_idxs must not be None during training")
-            # during training, only focus on positive boxes
-            num_images = len(proposals)
-            ellipse_box_proposals = []
-            pos_matched_idxs = []
-            for img_id in range(num_images):
-                pos = torch.where(labels[img_id] > 0)[0]
-                ellipse_box_proposals.append(proposals[img_id][pos])
-                pos_matched_idxs.append(matched_idxs[img_id][pos])
-        else:
-            pos_matched_idxs = None  # type: ignore
+        # ellipse_box_proposals = [p["boxes"] for p in result]
+        # if self.training:
+        #     if matched_idxs is None:
+        #         raise ValueError("matched_idxs must not be None during training")
+        #     # during training, only focus on positive boxes
+        #     num_images = len(proposals)
+        #     ellipse_box_proposals = []
+        #     pos_matched_idxs = []
+        #     for img_id in range(num_images):
+        #         pos = torch.where(labels[img_id] > 0)[0]
+        #         ellipse_box_proposals.append(proposals[img_id][pos])
+        #         pos_matched_idxs.append(matched_idxs[img_id][pos])
+        # else:
+        #     pos_matched_idxs = None  # type: ignore
+        #
+        # if self.ellipse_roi_pool is not None:
+        #     ellipse_features = self.ellipse_roi_pool(
+        #         features, ellipse_box_proposals, image_shapes
+        #     )
+        #     ellipse_features = self.ellipse_head(ellipse_features)
+        #     ellipse_shapes_normalised = self.ellipse_predictor(ellipse_features)
+        # else:
+        #     raise Exception("Expected ellipse_roi_pool to be not None")
 
-        if self.ellipse_roi_pool is not None:
-            ellipse_features = self.ellipse_roi_pool(
-                features, ellipse_box_proposals, image_shapes
-            )
-            ellipse_features = self.ellipse_head(ellipse_features)
-            ellipse_shapes_normalised = self.ellipse_predictor(ellipse_features)
-        else:
-            raise Exception("Expected ellipse_roi_pool to be not None")
-
-        loss_ellipse_regressor = {}
-        if self.training:
-            if targets is None:
-                raise ValueError("Targets must not be None during training")
-            if pos_matched_idxs is None:
-                raise ValueError("pos_matched_idxs must not be None during training")
-            if ellipse_shapes_normalised is None:
-                raise ValueError(
-                    "ellipse_shapes_normalised must not be None during training"
-                )
-
-            ellipse_targets = [t["ellipse_params"] for t in targets]
-            rcnn_loss_ellipse = self.ellipse_loss(
-                ellipse_shapes_normalised,
-                ellipse_targets,
-                pos_matched_idxs,
-                ellipse_box_proposals,
-            )
-
-            if self.loss_scale != 1.0:
-                rcnn_loss_ellipse["loss_ellipse_kld"] *= self.loss_scale
-                rcnn_loss_ellipse["loss_ellipse_smooth_l1"] *= self.loss_scale
-
-            loss_ellipse_regressor.update(rcnn_loss_ellipse)
-        else:
-            ellipses_per_image = [lbl.shape[0] for lbl in labels]
-            for pred, r, box in zip(
-                ellipse_shapes_normalised.split(ellipses_per_image, dim=0),
-                result,
-                ellipse_box_proposals,
-            ):
-                a, b, x, y, theta = self.ellipse_encoder.decode_single(pred, box)
-                r["ellipse_params"] = torch.stack((a, b, x, y, theta)).view(-1, 5)
-
-        losses.update(loss_ellipse_regressor)
+        # loss_ellipse_regressor = {}
+        # if self.training:
+        #     if targets is None:
+        #         raise ValueError("Targets must not be None during training")
+        #     if pos_matched_idxs is None:
+        #         raise ValueError("pos_matched_idxs must not be None during training")
+        #     if ellipse_shapes_normalised is None:
+        #         raise ValueError(
+        #             "ellipse_shapes_normalised must not be None during training"
+        #         )
+        #
+        #     ellipse_targets = [t["ellipse_params"] for t in targets]
+        #     rcnn_loss_ellipse = self.ellipse_loss(
+        #         ellipse_shapes_normalised,
+        #         ellipse_targets,
+        #         pos_matched_idxs,
+        #         ellipse_box_proposals,
+        #     )
+        #
+        #     if self.loss_scale != 1.0:
+        #         rcnn_loss_ellipse["loss_ellipse_kld"] *= self.loss_scale
+        #         rcnn_loss_ellipse["loss_ellipse_smooth_l1"] *= self.loss_scale
+        #
+        #     loss_ellipse_regressor.update(rcnn_loss_ellipse)
+        # else:
+        #     ellipses_per_image = [lbl.shape[0] for lbl in labels]
+        #     for pred, r, box in zip(
+        #         ellipse_shapes_normalised.split(ellipses_per_image, dim=0),
+        #         result,
+        #         ellipse_box_proposals,
+        #     ):
+        #         a, b, x, y, theta = self.ellipse_encoder.decode_single(pred, box)
+        #         r["ellipse_params"] = torch.stack((a, b, x, y, theta)).view(-1, 5)
+        #
+        # losses.update(loss_ellipse_regressor)
 
         return result, losses
 
@@ -297,7 +335,6 @@ class EllipseRoIHeads(RoIHeads):
         target = torch.cat(
             [o[idxs] for o, idxs in zip(target, pos_matched_idxs)], dim=0
         )
-        a_target, b_target, cx_target, cy_target, theta_target = target.unbind(-1)
 
         box_proposals = torch.cat(box_proposals, dim=0)
 
@@ -313,11 +350,7 @@ class EllipseRoIHeads(RoIHeads):
 
         # Encode target
         target_enc = self.ellipse_encoder.encode_single(
-            a=a_target,
-            b=b_target,
-            cx=cx_target,
-            cy=cy_target,
-            theta=theta_target,
+            target,
             proposals=box_proposals,
         )
 
@@ -332,6 +365,7 @@ class EllipseRoIHeads(RoIHeads):
         a, b, x, y, theta = self.ellipse_encoder.decode_single(pred, box_proposals)
 
         A_pred = ellipse_to_conic_matrix(a=a, b=b, theta=theta, x=x, y=y)
+        a_target, b_target, cx_target, cy_target, theta_target = target.unbind(-1)
         A_target = ellipse_to_conic_matrix(
             a=a_target, b=b_target, theta=theta_target, x=cx_target, y=cy_target
         )
@@ -343,3 +377,106 @@ class EllipseRoIHeads(RoIHeads):
             "loss_ellipse_kld": loss_kld,
             "loss_ellipse_smooth_l1": loss_smooth_l1,
         }
+
+    def select_training_samples(
+        self,
+        proposals: list[torch.Tensor],
+        targets: list[dict[str, torch.Tensor]] | None,
+    ) -> tuple[
+        list[torch.Tensor], list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]
+    ]:
+        self.check_targets(targets)
+        if targets is None:
+            raise ValueError("targets should not be None")
+        dtype = proposals[0].dtype
+        device = proposals[0].device
+
+        gt_boxes = [t["boxes"].to(dtype) for t in targets]
+        gt_labels = [t["labels"] for t in targets]
+        gt_ellipses = [t["ellipse_params"] for t in targets]
+
+        # append ground-truth bboxes to propos
+        proposals = self.add_gt_proposals(proposals, gt_boxes)
+
+        # get matching gt indices for each proposal
+        matched_idxs, labels = self.assign_targets_to_proposals(
+            proposals, gt_boxes, gt_labels
+        )
+        # sample a fixed proportion of positive-negative proposals
+        sampled_inds = self.subsample(labels)
+        matched_gt_ellipses = []
+        num_images = len(proposals)
+        for img_id in range(num_images):
+            img_sampled_inds = sampled_inds[img_id]
+            proposals[img_id] = proposals[img_id][img_sampled_inds]
+            labels[img_id] = labels[img_id][img_sampled_inds]
+            matched_idxs[img_id] = matched_idxs[img_id][img_sampled_inds]
+
+            gt_ellipses_in_image = gt_ellipses[img_id]
+            if gt_ellipses_in_image.numel() == 0:
+                gt_ellipses_in_image = torch.zeros((1, 4), dtype=dtype, device=device)
+            matched_gt_ellipses.append(gt_ellipses_in_image[matched_idxs[img_id]])
+
+        regression_targets = self.ellipse_encoder.encode(matched_gt_ellipses, proposals)
+        return proposals, matched_idxs, labels, regression_targets
+
+    def postprocess_detections(
+        self,
+        class_logits: torch.Tensor,
+        ellipse_regression: torch.Tensor,
+        proposals: list[torch.Tensor],
+        image_shapes: list[tuple[int, int]],
+    ) -> tuple[list[torch.Tensor], List[torch.Tensor], List[torch.Tensor]]:
+        device = class_logits.device
+        num_classes = class_logits.shape[-1]
+
+        boxes_per_image = [boxes_in_image.shape[0] for boxes_in_image in proposals]
+        pred_boxes = self.ellipse_encoder.decode(ellipse_regression, proposals)
+
+        pred_scores = F.softmax(class_logits, -1)
+
+        pred_boxes_list = pred_boxes.split(boxes_per_image, 0)
+        pred_scores_list = pred_scores.split(boxes_per_image, 0)
+
+        all_boxes = []
+        all_scores = []
+        all_labels = []
+        for boxes, scores, image_shape in zip(
+            pred_boxes_list, pred_scores_list, image_shapes
+        ):
+            # boxes = box_ops.clip_boxes_to_image(boxes, image_shape)
+
+            # create labels for each prediction
+            labels = torch.arange(num_classes, device=device)
+            labels = labels.view(1, -1).expand_as(scores)
+
+            # remove predictions with the background label
+            boxes = boxes[:, 1:]
+            scores = scores[:, 1:]
+            labels = labels[:, 1:]
+
+            # batch everything, by making every class prediction be a separate instance
+            boxes = boxes.reshape(-1, 4)
+            scores = scores.reshape(-1)
+            labels = labels.reshape(-1)
+
+            # remove low scoring boxes
+            inds = torch.where(scores > self.score_thresh)[0]  # type: ignore
+            boxes, scores, labels = boxes[inds], scores[inds], labels[inds]
+
+            # remove empty boxes
+            keep = remove_small_ellipses(boxes, min_size=1e-2)
+            boxes, scores, labels = boxes[keep], scores[keep], labels[keep]
+
+            # TODO: NMS
+            # # non-maximum suppression, independently done per class
+            # keep = box_ops.batched_nms(boxes, scores, labels, self.nms_thresh)
+            # keep only topk scoring predictions
+            keep = keep[: self.detections_per_img]
+            boxes, scores, labels = boxes[keep], scores[keep], labels[keep]
+
+            all_boxes.append(boxes)
+            all_scores.append(scores)
+            all_labels.append(labels)
+
+        return all_boxes, all_scores, all_labels

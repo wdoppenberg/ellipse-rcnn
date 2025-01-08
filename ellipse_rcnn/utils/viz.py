@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.collections import EllipseCollection, PatchCollection
 from matplotlib.patches import Rectangle
-from ellipse_rcnn.utils.conics import ellipse_angle, ellipse_center, ellipse_axes
+from ellipse_rcnn.core.ops import ellipse_center
 
 
 def plot_ellipses(

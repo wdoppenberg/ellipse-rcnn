@@ -1,14 +1,14 @@
 import torch
 
-from ellipse_rcnn.utils.conics import (
+from ellipse_rcnn.core.ops import (
     bbox_ellipse_matrix,
     ellipse_center,
     ellipse_axes,
     ellipse_angle,
-    adjugate_matrix,
-    unimodular_matrix,
     ellipse_to_conic_matrix,
+    ellipse_area,
 )
+from ellipse_rcnn.utils.mat import adjugate_matrix, unimodular_matrix
 
 
 def test_adjugate_matrix() -> None:
@@ -347,3 +347,41 @@ def test_ellipse_extreme_rotation() -> None:
 
     # Since 180 degrees is equivalent to 0 in modulus, angle should be approximately 0
     assert torch.allclose(theta_out % torch.pi, torch.tensor(0.0), atol=1e-7)
+
+
+def test_ellipse_area():
+    # Test case: Single ellipse
+    ellipses = torch.tensor([[3.0, 2.0, 0.0, 0.0, 0.0]])  # [a, b, cx, cy, theta]
+    expected_area = torch.tensor([3.0 * 2.0 * torch.pi])
+    computed_area = ellipse_area(ellipses)
+    assert torch.allclose(
+        computed_area, expected_area
+    ), f"Expected {expected_area}, got {computed_area}"
+
+    # Test case: Multiple ellipses
+    ellipses = torch.tensor(
+        [
+            [3.0, 2.0, 0.0, 0.0, 0.0],
+            [5.0, 1.0, 1.0, 2.0, 0.0],
+            [1.0, 1.0, 0.0, 0.0, 0.0],
+        ]
+    )
+    expected_areas = torch.tensor(
+        [
+            3.0 * 2.0 * torch.pi,
+            5.0 * 1.0 * torch.pi,
+            1.0 * 1.0 * torch.pi,
+        ]
+    )
+    computed_areas = ellipse_area(ellipses)
+    assert torch.allclose(
+        computed_areas, expected_areas
+    ), f"Expected {expected_areas}, got {computed_areas}"
+
+    # Test case: Degenerate ellipse
+    ellipses = torch.tensor([[0.0, 0.0, 0.0, 0.0, 0.0]])
+    expected_area = torch.tensor([0.0])
+    computed_area = ellipse_area(ellipses)
+    assert torch.allclose(
+        computed_area, expected_area
+    ), f"Expected {expected_area}, got {computed_area}"

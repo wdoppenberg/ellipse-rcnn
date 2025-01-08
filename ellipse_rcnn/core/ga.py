@@ -1,5 +1,5 @@
 import torch
-from ellipse_rcnn.utils.conics import ellipse_center
+from ellipse_rcnn.core.ops import ellipse_center
 
 
 def gaussian_angle_distance(A1: torch.Tensor, A2: torch.Tensor) -> torch.Tensor:

@@ -4,12 +4,7 @@ import torch
 
 
 def encode_ellipses(
-    *,
-    a: torch.Tensor,
-    b: torch.Tensor,
-    cx: torch.Tensor,
-    cy: torch.Tensor,
-    theta: torch.Tensor,
+    reference_ellipses: torch.Tensor,
     proposals: torch.Tensor,
     weights: torch.Tensor,
 ) -> torch.Tensor:
@@ -18,16 +13,8 @@ def encode_ellipses(
 
     Parameters
     ----------
-    a : torch.Tensor
-        Semi-major axes of the ellipses of shape [N].
-    b : torch.Tensor
-        Semi-minor axes of the ellipses of shape [N].
-    cx : torch.Tensor
-        X-coordinates of the ellipse centers of shape [N].
-    cy : torch.Tensor
-        Y-coordinates of the ellipse centers of shape [N].
-    theta : torch.Tensor
-        Orientations (angles) w.r.t. x-axis of the ellipses of shape [N].
+    reference_ellipses : torch.Tensor
+        Ellipse parameters with shape [N, 5] with ordering [a, b, cx, cy, theta]
     proposals : torch.Tensor
         Proposal boxes from RPN in the format (x1, y1, x2, y2) [N, 4].
     weights : torch.Tensor
@@ -38,6 +25,7 @@ def encode_ellipses(
     torch.Tensor
         Encoded ellipse parameters relative to proposals, shape [N, 5].
     """
+    a, b, cx, cy, theta = reference_ellipses.unbind(-1)
     # Proposal box parameters [N]
     ex_widths = proposals[:, 2] - proposals[:, 0]
     ex_heights = proposals[:, 3] - proposals[:, 1]
@@ -152,9 +140,7 @@ class EllipseEncoder:
 
     def encode(
         self,
-        reference_ellipses: list[
-            tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
-        ],
+        reference_ellipses: list[torch.Tensor],
         proposals: list[torch.Tensor],
     ) -> list[torch.Tensor]:
         """
@@ -165,52 +151,41 @@ class EllipseEncoder:
             proposals: List of proposal boxes tensors [N, 4] in (x1,y1,x2,y2) format
         """
         # Count ellipses per image
-        ellipses_per_image = [len(e[0]) for e in reference_ellipses]
+        ellipses_per_image = [e.shape[0] for e in reference_ellipses]
 
-        # Concatenate all ellipse parameters
-        cat_a = torch.cat([e[0] for e in reference_ellipses], dim=0)
-        cat_b = torch.cat([e[1] for e in reference_ellipses], dim=0)
-        cat_cx = torch.cat([e[2] for e in reference_ellipses], dim=0)
-        cat_cy = torch.cat([e[3] for e in reference_ellipses], dim=0)
-        cat_theta = torch.cat([e[4] for e in reference_ellipses], dim=0)
+        # Concatenate ellipses
+        cat_ellipses = torch.cat(reference_ellipses, dim=0)
 
         # Concatenate proposals
         cat_proposals = torch.cat(proposals, dim=0)
 
         # Encode all ellipses
-        targets = self.encode_single(
-            cat_a, cat_b, cat_cx, cat_cy, cat_theta, cat_proposals
-        )
+        targets = self.encode_single(cat_ellipses, cat_proposals)
 
         # Split back to per-image tensors
         return targets.split(ellipses_per_image, 0)
 
     def encode_single(
         self,
-        a: torch.Tensor,
-        b: torch.Tensor,
-        cx: torch.Tensor,
-        cy: torch.Tensor,
-        theta: torch.Tensor,
+        reference_ellipses: torch.Tensor,
         proposals: torch.Tensor,
     ) -> torch.Tensor:
         """
         Encode a set of ellipses with respect to proposal boxes.
 
-        Args:
-            a: Semi-major axes [N]
-            b: Semi-minor axes [N]
-            cx: Center x-coordinates [N]
-            cy: Center y-coordinates [N]
-            theta: Rotation angles [N]
-            proposals: Proposal boxes [N,4] in (x1,y1,x2,y2) format
+        Parameters
+        ----------
+        reference_ellipses : torch.Tensor
+            Ellipse parameters with shape [N, 5] with ordering [a, b, cx, cy, theta]
+        proposals : torch.Tensor
+            Proposal boxes [N,4] in (x1,y1,x2,y2) format
         """
         dtype = proposals.dtype
         device = proposals.device
         weights = torch.as_tensor(self.weights, dtype=dtype, device=device)
 
         targets = encode_ellipses(
-            a=a, b=b, cx=cx, cy=cy, theta=theta, proposals=proposals, weights=weights
+            reference_ellipses=reference_ellipses, proposals=proposals, weights=weights
         )
 
         return targets
@@ -258,9 +233,12 @@ class EllipseEncoder:
         """
         Decode a set of relative ellipse parameters with respect to proposal boxes.
 
-        Args:
-            rel_codes: Relative ellipse parameters [N, 5]
-            proposals: Proposal boxes [N, 4] in (x1,y1,x2,y2) format
+        Parameters
+        ----------
+        rel_codes:
+            Encoded ellipse parameters [N, 5]
+        proposals:
+            Proposal boxes [N, 4] in (x1,y1,x2,y2) format
         """
         weights = torch.as_tensor(
             self.weights, dtype=rel_codes.dtype, device=rel_codes.device
