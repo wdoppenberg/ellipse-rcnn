@@ -9,7 +9,7 @@ def sample_parametric_ellipses(
     b_range=(1.0, 3.0),
     theta_range=(0.0, 2 * torch.pi),
     xy_range=(-1.0, 1.0),
-) -> tuple[torch.Tensor, ...]:
+) -> torch.Tensor:
     """
     Generate parametric ellipses with uniformly sampled random parameters.
 
@@ -41,7 +41,7 @@ def sample_parametric_ellipses(
     x = torch.rand(batch_size) * (xy_range[1] - xy_range[0]) + xy_range[0]
     y = torch.rand(batch_size) * (xy_range[1] - xy_range[0]) + xy_range[0]
 
-    return a, b, x, y, theta
+    return torch.stack([a, b, x, y, theta], dim=-1).view(-1, 5)
 
 
 def sample_conic_ellipses(

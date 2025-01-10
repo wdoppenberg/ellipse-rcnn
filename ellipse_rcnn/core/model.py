@@ -13,7 +13,7 @@ from torchvision.models.detection.rpn import RPNHead, RegionProposalNetwork
 from torchvision.models.detection.transform import GeneralizedRCNNTransform
 from torchvision.ops import MultiScaleRoIAlign
 
-from .ellipse_roi_head import EllipseRoIHeads, EllipseRCNNPredictor
+from .roi_head import EllipseRoIHeads, EllipseRCNNPredictor
 from ..utils.types import CollatedBatchType
 
 

@@ -17,7 +17,6 @@ dependencies = [
     "torchvision>=0.20.1",
 ]
 
-
 [dependency-groups]
 dev = [
     "jupyter>=1.1.1",
@@ -29,6 +28,9 @@ dev = [
     "torch-tb-profiler>=0.4.3",
     "typer>=0.15.1",
 ]
+
+[project.scripts]
+
 
 [build-system]
 requires = ["hatchling"]

@@ -26,9 +26,9 @@ This sets up a new virtual environment and installs all packages into it.
 Get info on either the training or sample (prediction) script using:
 
 ```shell
-uv run train.py --help
+uv run scripts/train.py --help
 # or
-uv run sample.py --help
+uv run scripts/sample.py --help
 ```
 
 Currently the training script only supports training with FDDB. See the required steps for

@@ -1,6 +1,90 @@
 import torch
 
 
+def parametric_to_quadratic(ellipses: torch.Tensor) -> torch.Tensor:
+    """
+    Converts a parametric ellipse representation [a, b, x, y, theta] into a
+    3x3 quadratic form matrix using affine transformations.
+
+    Parameters:
+        ellipses: torch.Tensor of shape [N, 5]
+            Each row represents an ellipse with parameters:
+            - a: Semi-major axis length.
+            - b: Semi-minor axis length.
+            - x, y: Center coordinates.
+            - theta: Rotation angle w.r.t. x-axis in radians.
+
+    Returns:
+        torch.Tensor of shape [N, 3, 3]
+            A transformable 3x3 quadratic representation of the ellipse.
+    """
+    a, b, x, y, theta = (
+        ellipses[:, 0],
+        ellipses[:, 1],
+        ellipses[:, 2],
+        ellipses[:, 3],
+        ellipses[:, 4],
+    )
+
+    # Rotation matrix for the angle `theta`
+    cos_t = torch.cos(theta)
+    sin_t = torch.sin(theta)
+    R = torch.stack(
+        [torch.stack([cos_t, -sin_t], dim=-1), torch.stack([sin_t, cos_t], dim=-1)],
+        dim=-2,
+    )
+
+    # Inverse squared radii matrix (principal axes)
+    D_inv = torch.diag_embed(1.0 / torch.stack([a**2, b**2], dim=-1))
+
+    # Quadratic form of ellipse: A = R @ D_inv @ R.T
+    A = R @ D_inv @ R.transpose(-1, -2)
+
+    # Combine A with the translation to form a 3x3 representation
+    # Extend A with translation terms (center x, y)
+    A_quadratic = torch.cat(
+        [
+            torch.cat([A, torch.stack([x, y], dim=-1)[..., None]], dim=-1),
+            torch.stack([x, y, -torch.ones_like(x)], dim=-1)[..., None, :],
+        ],
+        dim=-2,
+    )
+
+    return A_quadratic
+
+
+def quadratic_to_parametric(quadratics: torch.Tensor) -> torch.Tensor:
+    """
+    Converts quadratic 3x3 matrix representation of an ellipse back to
+    its parametric representation [a, b, x, y, theta].
+
+    Parameters:
+        quadratics: torch.Tensor of shape [N, 3, 3]
+            Each quadratic matrix represents the ellipse in the 2D plane.
+
+    Returns:
+        torch.Tensor of shape [N, 5]
+            Each row represents an ellipse with parameters:
+            - a: Semi-major axis length.
+            - b: Semi-minor axis length.
+            - x, y: Center coordinates.
+            - theta: Rotation angle w.r.t. x-axis in radians.
+    """
+    # Use the predefined functions to extract ellipse parameters
+    centers_x, centers_y = ellipse_center(quadratics)  # Extract (x, y) center
+    semi_major, semi_minor = ellipse_axes(
+        quadratics
+    )  # Get semi-major and semi-minor axes
+    theta = ellipse_angle(quadratics)  # Compute the orientation angle (theta)
+
+    # Combine the parameters into a single tensor with shape [N, 5]
+    parametric_representation = torch.stack(
+        [semi_major, semi_minor, centers_x, centers_y, theta], dim=-1
+    )
+
+    return parametric_representation
+
+
 def ellipse_to_conic_matrix(
     *,
     a: torch.Tensor,
@@ -9,7 +93,9 @@ def ellipse_to_conic_matrix(
     y: torch.Tensor | None = None,
     theta: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    r"""Returns matrix representation for crater derived from ellipse parameters such that _[1]:
+    """Converts parametric ellipse attributes into a general conic matrix
+    representation in 2D Cartesian space.
+    _[1]:
 
       | A = a²(sin θ)² + b²(cos θ)²
       | B = 2(b² - a²) sin θ cos θ
@@ -18,24 +104,21 @@ def ellipse_to_conic_matrix(
       | E = -Bx₀ - 2Cy₀
       | F = Ax₀² + Bx₀y₀ + Cy₀² - a²b²
 
-    Resulting in a conic matrix:
-    ::
-                |A    B/2  D/2 |
-        M  =    |B/2  C    E/2 |
-                |D/2  E/2  G   |
+    Parameters:
+        a: torch.Tensor
+            Semi-major axis length.
+        b: torch.Tensor
+            Semi-minor axis length.
+        x: torch.Tensor, optional
+            X-coordinate of the center. Defaults to 0.
+        y: torch.Tensor, optional
+            Y-coordinate of the center. Defaults to 0.
+        theta: torch.Tensor, optional
+            Rotation angle w.r.t. x-axis in radians. Defaults to 0.
 
-    Parameters
-    ----------
-    a:
-        Semi-Major ellipse axis
-    b:
-        Semi-Minor ellipse axis
-    theta:
-        Ellipse angle (radians)
-    x:
-        X-position in 2D cartesian coordinate system (coplanar)
-    y:
-        Y-position in 2D cartesian coordinate system (coplanar)
+    Returns:
+        torch.Tensor of shape [N, 3, 3]
+            A general conic matrix of the ellipse with parameters encoded.
 
     Returns
     -------
@@ -47,9 +130,9 @@ def ellipse_to_conic_matrix(
     .. [1] https://www.researchgate.net/publication/355490899_Lunar_Crater_Identification_in_Digital_Images
     """
 
-    x = x if x is not None else torch.zeros(1)
-    y = y if y is not None else torch.zeros(1)
-    theta = theta if theta is not None else torch.zeros(1)
+    x = x if x is not None else torch.zeros_like(a)
+    y = y if y is not None else torch.zeros_like(a)
+    theta = theta if theta is not None else torch.zeros_like(a)
 
     sin_theta = torch.sin(theta)
     cos_theta = torch.cos(theta)

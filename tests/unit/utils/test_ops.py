@@ -6,7 +6,7 @@ from ellipse_rcnn.core.ops import (
     ellipse_axes,
     ellipse_angle,
     ellipse_to_conic_matrix,
-    ellipse_area,
+    ellipse_area, parametric_to_quadratic, quadratic_to_parametric,
 )
 from ellipse_rcnn.utils.mat import adjugate_matrix, unimodular_matrix
 
@@ -98,7 +98,7 @@ def test_bbox_ellipse() -> None:
 
     ellipse_matrices = ellipse_to_conic_matrix(a=a, b=b, x=cx, y=cy, theta=theta)
 
-    expected_bbox = torch.tensor([[-4, 0.0, 6.0, 6.0], [-4.0, 0.0, 8.0, 8.0]])
+    expected_bbox = torch.tensor([[-4.0, 0.0, 6.0, 6.0], [-4.0, 0.0, 8.0, 8.0]])
     calculated_bbox = bbox_ellipse_matrix(ellipse_matrices)
 
     assert torch.allclose(calculated_bbox, expected_bbox)
@@ -385,3 +385,133 @@ def test_ellipse_area():
     assert torch.allclose(
         computed_area, expected_area
     ), f"Expected {expected_area}, got {computed_area}"
+
+
+def test_identity_ellipse():
+    """
+    Test a circle (a == b) at the origin with no rotation (theta == 0).
+    """
+    ellipses = torch.tensor(
+        [[1.0, 1.0, 0.0, 0.0, 0.0]]
+    )  # Circle with a = b = 1, no rotation
+    expected_matrix = torch.tensor(
+        [
+            [
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, -1.0],
+            ]
+        ]
+    )
+    result = parametric_to_quadratic(ellipses)
+    torch.testing.assert_close(result, expected_matrix)
+
+
+def test_ellipse_no_rotation():
+    """
+    Test an ellipse with no rotation but located at a point.
+    """
+    ellipses = torch.tensor(
+        [[3.0, 2.0, 0.0, 0.0, 0.0]]
+    )  # Ellipse with a = 3, b = 2, no rotation
+    expected_matrix = torch.tensor(
+        [
+            [
+                [1.0 / 9.0, 0.0, 0.0],
+                [0.0, 1.0 / 4.0, 0.0],
+                [0.0, 0.0, -1.0],
+            ]
+        ]
+    )
+    result = parametric_to_quadratic(ellipses)
+    torch.testing.assert_close(result, expected_matrix)
+
+
+def test_ellipse_with_rotation():
+    """
+    Test an ellipse with a rotation angle.
+    """
+    ellipses = torch.tensor(
+        [[3.0, 2.0, 0.0, 0.0, torch.pi / 4]]
+    )  # Ellipse rotated by 45 degrees
+    result = parametric_to_quadratic(ellipses)
+
+    # Ellipse with rotation: expected values are harder to calculate manually, so we test properties.
+    assert result.shape == (1, 3, 3)
+    assert torch.allclose(
+        result[0, :2, :2], result[0, :2, :2].T
+    )  # Symmetry of the upper 2x2 block
+    assert torch.det(result[0, :2, :2]) > 0  # Positive determinant for covariance
+
+
+def test_multiple_ellipses():
+    """
+    Test multiple ellipses in a batch.
+    """
+    ellipses = torch.tensor(
+        [
+            [3.0, 2.0, 0.0, 0.0, 0.0],  # Ellipse with no rotation
+            [1.0, 1.0, 0.0, 0.0, 0.0],  # Circle
+            [3.0, 2.0, 1.0, 1.0, torch.pi / 6],  # Rotated and shifted ellipse
+        ]
+    )
+    results = parametric_to_quadratic(ellipses)
+
+    assert results.shape == (3, 3, 3)  # Check shape for 3 ellipses
+    assert torch.allclose(
+        results[1, :2, :2], torch.eye(2)
+    )  # Circle matrix is identity in upper-left 2x2 block
+
+
+def test_translation():
+    """
+    Test an ellipse with translation (x, y) applied.
+    """
+    ellipses = torch.tensor(
+        [[3.0, 2.0, 2.0, -1.0, 0.0]]
+    )  # Translation: (x, y) = (2, -1)
+    result = parametric_to_quadratic(ellipses)
+
+    expected_translation = torch.tensor(
+        [
+            [1.0 / 9.0, 0.0, 2.0],
+            [0.0, 1.0 / 4.0, -1.0],
+            [2.0, -1.0, -1.],
+        ]
+    )
+    torch.testing.assert_close(result[0], expected_translation, atol=1e-4, rtol=1e-4)
+
+
+def test_edge_case():
+    """
+    Test an edge case where the ellipse's major and minor axes are both very small.
+    """
+    ellipses = torch.tensor(
+        [[1e-3, 1e-3, 1e-2, -1e-2, torch.pi / 8]]
+    )  # Small ellipse, slightly rotated
+    result = parametric_to_quadratic(ellipses)
+
+    assert result.shape == (1, 3, 3)
+    assert torch.isfinite(result).all()  # Ensure no NaN or Inf values in the result
+
+
+def test_quadratic_to_parametric_batched():
+    """
+    Test converting quadratic matrices back to parametric representation with batched input.
+    """
+
+    # Expected output
+    expected = torch.tensor(
+        [
+            [3.0, 2.0, 1.0, -1.0, 0.0],  # First ellipse
+            [1.0, 1.0, 0.0, 0.0, 0.0],  # Circle
+        ]
+    )
+    quadratics = parametric_to_quadratic(expected)
+
+    # Function output
+    result = quadratic_to_parametric(quadratics)
+
+    # Assert for both shape and values
+    assert result.shape == expected.shape
+    torch.testing.assert_close(result, expected, atol=1e-4, rtol=1e-4)

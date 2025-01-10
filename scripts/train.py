@@ -1,5 +1,4 @@
 import pytorch_lightning as pl
-import torch
 import typer
 import random
 
@@ -24,7 +23,7 @@ def train_model(
     num_workers: int = 4,
 ):
     datamodule = FDDBLightningDataModule(
-        "data/FDDB", num_workers=num_workers, batch_size=4
+        "../data/FDDB", num_workers=num_workers, batch_size=4
     )
     if iterations > 1:
         print("Warning: Running with multiple iterations.")

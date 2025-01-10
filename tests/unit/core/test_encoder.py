@@ -12,13 +12,14 @@ def test_ellipse_encoding_decoding():
     weights = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0])
 
     # Generate random ellipses
-    a, b, cx, cy, theta = sample_parametric_ellipses(
+    ellipses = sample_parametric_ellipses(
         batch_size,
         a_range=(2.0, 5.0),
         b_range=(1.0, 3.0),
         theta_range=(0, 2 * torch.pi),
         xy_range=(-10.0, 10.0),
     )
+    a, b, cx, cy, theta = ellipses.unbind(-1)
 
     # Create some proposal boxes (slightly larger than ellipses)
     margins = torch.rand(batch_size) * 2.0 + 1.0  # Random margins between 1 and 3
@@ -27,9 +28,7 @@ def test_ellipse_encoding_decoding():
     )
 
     # Encode
-    encoded = encode_ellipses(
-        a=a, b=b, cx=cx, cy=cy, theta=theta, proposals=proposals, weights=weights
-    )
+    encoded = encode_ellipses(ellipses, proposals=proposals, weights=weights)
 
     # Decode
     pred_a, pred_b, pred_x, pred_y, pred_theta = decode_ellipses(
@@ -54,13 +53,14 @@ def test_weight_scaling():
     weights = torch.tensor([2.0, 3.0, 4.0, 5.0, 6.0])
 
     # Generate random ellipses
-    a, b, cx, cy, theta = sample_parametric_ellipses(
+    ellipses = sample_parametric_ellipses(
         batch_size,
         a_range=(2.0, 5.0),
         b_range=(1.0, 3.0),
         theta_range=(0, 2 * torch.pi),
         xy_range=(-10.0, 10.0),
     )
+    a, b, cx, cy, theta = ellipses.unbind(-1)
 
     # Create some proposal boxes (slightly larger than ellipses)
     margins = torch.rand(batch_size) * 2.0 + 1.0  # Random margins between 1 and 3
@@ -69,9 +69,7 @@ def test_weight_scaling():
     )
 
     # Encode
-    encoded = encode_ellipses(
-        a=a, b=b, cx=cx, cy=cy, theta=theta, proposals=proposals, weights=weights
-    )
+    encoded = encode_ellipses(ellipses, proposals=proposals, weights=weights)
 
     # Decode
     pred_a, pred_b, pred_x, pred_y, pred_theta = decode_ellipses(
@@ -92,13 +90,14 @@ def test_batch_processing():
     for batch_size in batch_sizes:
         # Generate data
         # Generate random ellipses
-        a, b, cx, cy, theta = sample_parametric_ellipses(
+        ellipses = sample_parametric_ellipses(
             batch_size,
             a_range=(2.0, 5.0),
             b_range=(1.0, 3.0),
             theta_range=(0, 2 * torch.pi),
             xy_range=(-10.0, 10.0),
         )
+        a, b, cx, cy, theta = ellipses.unbind(-1)
 
         # Create some proposal boxes (slightly larger than ellipses)
         margins = torch.rand(batch_size) * 2.0 + 1.0  # Random margins between 1 and 3
@@ -108,9 +107,7 @@ def test_batch_processing():
         )
 
         # Encode
-        encoded = encode_ellipses(
-            a=a, b=b, cx=cx, cy=cy, theta=theta, proposals=proposals, weights=weights
-        )
+        encoded = encode_ellipses(ellipses, proposals=proposals, weights=weights)
 
         # Decode
         pred_a, pred_b, pred_x, pred_y, pred_theta = decode_ellipses(
@@ -132,7 +129,7 @@ def test_edge_cases():
     a = b = torch.tensor([3.0])
     cx = cy = torch.tensor([0.0])
     theta = torch.tensor([0.0])
-    ellipses = torch.stack([a, b, cx, cy, theta])
+    ellipses = torch.stack([a, b, cx, cy, theta]).view(-1, 5)
 
     proposals = torch.tensor([[-3.0, -3.0, 3.0, 3.0]])
 
@@ -156,21 +153,23 @@ def test_ellipse_encoder():
     batch_size_2 = 2
 
     # Generate test data with more reasonable ranges
-    a1, b1, cx1, cy1, theta1 = sample_parametric_ellipses(
+    ellipse1 = sample_parametric_ellipses(
         batch_size_1,
         a_range=(2.0, 4.0),  # Reduced range
         b_range=(1.0, 2.0),  # Reduced range
         theta_range=(0, 2 * torch.pi),
         xy_range=(-5.0, 5.0),  # Reduced range
     )
+    a1, b1, cx1, cy1, theta1 = ellipse1.unbind(-1)
 
-    a2, b2, cx2, cy2, theta2 = sample_parametric_ellipses(
+    ellipse2 = sample_parametric_ellipses(
         batch_size_2,
         a_range=(2.0, 4.0),  # Reduced range
         b_range=(1.0, 2.0),  # Reduced range
         theta_range=(0, 2 * torch.pi),
         xy_range=(-5.0, 5.0),  # Reduced range
     )
+    a2, b2, cx2, cy2, theta2 = ellipse2.unbind(-1)
 
     # Create proposal boxes with smaller margins
     margins1 = torch.ones_like(a1) * 1.2  # Fixed margin of 1.2
@@ -196,7 +195,7 @@ def test_ellipse_encoder():
     )
 
     # Test encoding multiple images
-    reference_ellipses = [(a1, b1, cx1, cy1, theta1), (a2, b2, cx2, cy2, theta2)]
+    reference_ellipses = [ellipse1, ellipse2]
     proposals = [proposals1, proposals2]
 
     encoded = encoder.encode(reference_ellipses, proposals)
@@ -235,15 +234,7 @@ def test_ellipse_encoder_empty_inputs():
     encoder = EllipseEncoder(weights=(1.0, 1.0, 1.0, 1.0, 1.0))
 
     # Test with empty inputs
-    empty_ellipses = [
-        (
-            torch.tensor([]),
-            torch.tensor([]),
-            torch.tensor([]),
-            torch.tensor([]),
-            torch.tensor([]),
-        )
-    ]
+    empty_ellipses = [torch.zeros((0, 5))]
     empty_proposals = [torch.zeros((0, 4))]
 
     encoded = encoder.encode(empty_ellipses, empty_proposals)
@@ -276,7 +267,7 @@ def test_ellipse_encoder_clipping():
         ]
     )
 
-    reference_ellipses = [(a, b, cx, cy, theta)]
+    reference_ellipses = [torch.stack([a, b, cx, cy, theta], dim=-1).view(-1, 5)]
     encoded = encoder.encode(reference_ellipses, [proposals])
 
     # Decode with clipping
@@ -313,7 +304,8 @@ def test_ellipse_encoder_single():
     proposals = torch.tensor([[-3.0, -3.0, 3.0, 3.0]])
 
     # Test encode_single
-    encoded = encoder.encode_single(a, b, cx, cy, theta, proposals)
+    ellipses = torch.stack([a, b, cx, cy, theta], dim=-1).view(-1, 5)
+    encoded = encoder.encode_single(ellipses, proposals)
     assert encoded.shape == (1, 5)
 
     # Test decode_single

@@ -41,15 +41,15 @@ def encode_ellipses(
     wtheta = weights[4]
 
     # Center offset targets normalized by proposal dimensions [N]
-    targets_dx = wx * (cx - ex_ctr_x) / ex_widths
-    targets_dy = wy * (cy - ex_ctr_y) / ex_heights
+    targets_dx = wx * (cx - ex_ctr_x) / ex_diag
+    targets_dy = wy * (cy - ex_ctr_y) / ex_diag
 
     # Axis lengths normalized by proposal diagonal [N]
-    targets_da = wa * torch.log(a / ex_diag)
-    targets_db = wb * torch.log(b / ex_diag)
+    targets_da = wa * torch.log(2 * a / ex_diag)
+    targets_db = wb * torch.log(2 * b / ex_diag)
 
     # Angle target - normalize to [-1,1] range [N]
-    targets_dtheta = wtheta * (theta / (torch.pi / 2))
+    targets_dtheta = wtheta * (theta / torch.pi)
 
     # Stack to [N, 5]
     targets = torch.stack(
@@ -60,7 +60,7 @@ def encode_ellipses(
 
 def decode_ellipses(
     ellipse_enc: torch.Tensor, proposals: torch.Tensor, weights: torch.Tensor
-) -> tuple[torch.Tensor, ...]:
+) -> torch.Tensor:
     """
     Decode relative ellipse parameters back to absolute values.
 
@@ -75,8 +75,8 @@ def decode_ellipses(
 
     Returns
     -------
-    tuple of torch.Tensor
-        Tuple containing:
+    torch.Tensor
+        containing:
             - pred_a : torch.Tensor
                 Decoded major semi-axes of the ellipses of shape [N].
             - pred_b : torch.Tensor
@@ -103,20 +103,22 @@ def decode_ellipses(
     diag = torch.sqrt(widths**2 + heights**2)
 
     # Decode center coordinates [N]
-    pred_cx = dx * widths + ctr_x
-    pred_cy = dy * heights + ctr_y
+    pred_cx = dx * diag + ctr_x
+    pred_cy = dy * diag + ctr_y
 
     # Decode semi-axes [N]
-    pred_a = torch.exp(da) * diag
-    pred_b = torch.exp(db) * diag
+    pred_a = torch.exp(da) * diag / 2
+    pred_b = torch.exp(db) * diag / 2
 
     # Decode angle [N]
-    pred_theta = dtheta * (torch.pi / 2)
+    pred_theta = dtheta * torch.pi
 
     # Ensure b <= a
     pred_a, pred_b = torch.maximum(pred_a, pred_b), torch.minimum(pred_a, pred_b)
 
-    return pred_a, pred_b, pred_cx, pred_cy, pred_theta
+    return torch.stack([pred_a, pred_b, pred_cx, pred_cy, pred_theta], dim=-1).view(
+        -1, 5
+    )
 
 
 class EllipseEncoder:
@@ -192,7 +194,7 @@ class EllipseEncoder:
 
     def decode(
         self, rel_codes: torch.Tensor, proposals: list[torch.Tensor]
-    ) -> tuple[torch.Tensor, ...] | tuple[tuple[torch.Tensor, ...], ...]:
+    ) -> tuple[torch.Tensor, ...] | torch.Tensor:
         """
         From a set of encoded relative ellipse parameters and proposal boxes,
         decode the absolute ellipse parameters.
@@ -217,19 +219,13 @@ class EllipseEncoder:
 
         # Split parameters if needed
         if box_sum > 0:
-            pred_a, pred_b, pred_cx, pred_cy, pred_theta = pred_ellipses
-            pred_a = pred_a.split(boxes_per_image, 0)
-            pred_b = pred_b.split(boxes_per_image, 0)
-            pred_cx = pred_cx.split(boxes_per_image, 0)
-            pred_cy = pred_cy.split(boxes_per_image, 0)
-            pred_theta = pred_theta.split(boxes_per_image, 0)
-            return pred_a, pred_b, pred_cx, pred_cy, pred_theta
+            return pred_ellipses.split(boxes_per_image)
 
         return pred_ellipses
 
     def decode_single(
         self, rel_codes: torch.Tensor, proposals: torch.Tensor
-    ) -> tuple[torch.Tensor, ...]:
+    ) -> torch.Tensor:
         """
         Decode a set of relative ellipse parameters with respect to proposal boxes.
 
@@ -251,7 +247,7 @@ class EllipseEncoder:
         rel_codes = torch.cat([clamped_params, rel_codes[:, 2:]], dim=1)
 
         # Decode ellipse parameters
-        pred_a, pred_b, pred_cx, pred_cy, pred_theta = decode_ellipses(
+        pred_ellipses = decode_ellipses(
             ellipse_enc=rel_codes, proposals=proposals, weights=weights
         )
 
@@ -260,7 +256,7 @@ class EllipseEncoder:
         heights = proposals[:, 3] - proposals[:, 1]
         max_size = torch.maximum(widths, heights) * math.exp(self.ellipse_xform_clip)
 
-        pred_a = torch.minimum(pred_a, max_size)
-        pred_b = torch.minimum(pred_b, max_size)
+        # pred_a = torch.minimum(pred_a, max_size)
+        # pred_b = torch.minimum(pred_b, max_size)
 
-        return pred_a, pred_b, pred_cx, pred_cy, pred_theta
+        return pred_ellipses
