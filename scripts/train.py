@@ -1,3 +1,5 @@
+from typing import Literal
+
 import pytorch_lightning as pl
 import typer
 import random
@@ -22,9 +24,11 @@ def train_model(
     weight_decay_min: float = 1e-5,
     weight_decay_max: float = 1e-3,
     num_workers: int = 4,
+    batch_size: int = 16,
+    accelerator: str = "auto"
 ) -> None:
     datamodule = FDDBLightningDataModule(
-        "data/FDDB", num_workers=num_workers, batch_size=16
+        "data/FDDB", num_workers=num_workers, batch_size=batch_size
     )
 
     if iterations > 1:
@@ -57,11 +61,10 @@ def train_model(
             mode="min",
         )
         trainer = pl.Trainer(
-            accelerator="auto",
+            accelerator=accelerator,
             precision="bf16-mixed",
             max_epochs=40,
             enable_checkpointing=True,
-            detect_anomaly=True,
             callbacks=[checkpoint_callback, early_stopping_callback],
         )
 
