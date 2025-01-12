@@ -12,9 +12,10 @@ def mv_kullback_leibler_divergence(
     """
     Compute multi-variate KL divergence between ellipses represented by their matrices.
 
-    Args:
-        A1, A2: Ellipse matrices of shape (..., 3, 3)
-        shape_only: If True, ignores displacement term
+    Parameters
+    ----------
+    A1, A2: Ellipse matrices of shape (..., 3, 3)
+    shape_only: If True, ignores displacement term
     """
 
     # Ensure that batch sizes are equal
@@ -86,12 +87,6 @@ def symmetric_kl_divergence(
 class SymmetricKLDLoss(torch.nn.Module):
     """
     Computes the symmetric Kullback-Leibler divergence (KLD) loss between two tensors.
-
-    SymmetricKLDLoss is used for measuring the divergence between two probability
-    distributions or tensors, which can be useful in tasks such as generative modeling
-    or optimization. The function allows for options such as normalizing the tensors or
-    focusing only on their shape for comparison. Additionally, it includes a feature
-    to handle NaN values by replacing them with a numeric constant.
 
     Attributes
     ----------

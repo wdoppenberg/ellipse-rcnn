@@ -17,6 +17,11 @@ dependencies = [
     "torchvision>=0.20.1",
 ]
 
+keywords = ["ellipse", "rcnn", "deep learning", "computer vision", "PyTorch"]
+homepage = "https://github.com/wdoppenberg/ellipse-rcnn"
+repository = "https://github.com/wdoppenberg/ellipse-rcnn.git"
+documentation = "https://github.com/wdoppenberg/ellipse-rcnn"
+
 [dependency-groups]
 dev = [
     "jupyter>=1.1.1",
