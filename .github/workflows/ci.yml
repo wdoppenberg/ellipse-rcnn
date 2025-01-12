@@ -11,7 +11,7 @@ on:
 
 jobs:
   uv-example:
-    name: python
+    name: Lint & Test
     runs-on: ubuntu-latest
 
     steps:

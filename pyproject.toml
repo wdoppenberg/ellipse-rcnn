@@ -51,6 +51,3 @@ convention = "numpy"
 python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
-
-[tool.bandit]
-exclude_dirs = ["test", "notebooks"]
