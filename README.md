@@ -10,7 +10,7 @@
 A PyTorch (Lightning) implementation of Ellipse R-CNN. Originally developed for [another project](https://github.com/wdoppenberg/crater-detection), it has proven succesful in predicting instanced ellipses.
 The methodology is based on [this paper](https://arxiv.org/abs/2001.11584), albeit different in the sense that this model uses the regressed bounding box predictions instead of region proposals as the base for predicted normalised ellipse parameters.
 
-
+![Sample image](docs/sample.png)
 
 ## Setup
 
