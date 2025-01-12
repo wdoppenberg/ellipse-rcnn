@@ -3,8 +3,11 @@ from typing import TypedDict
 import torch
 from torch import nn, Tensor
 from torch.nn import functional as F
-from torchvision.models.detection._utils import BoxCoder, BalancedPositiveNegativeSampler, Matcher  # noqa: F
-from torchvision.models.detection.roi_heads import RoIHeads
+from torchvision.models.detection._utils import (
+    BoxCoder,
+    BalancedPositiveNegativeSampler,
+    Matcher,
+)  # noqa: F
 from torchvision.ops import boxes as box_ops
 
 from ellipse_rcnn.core.ops import (
@@ -179,9 +182,13 @@ class EllipseRoIHeads(nn.Module):
         super().__init__()
         self.box_similarity = box_ops.box_iou
         # assign ground-truth boxes for each proposal
-        self.proposal_matcher = Matcher(fg_iou_thresh, bg_iou_thresh, allow_low_quality_matches=False)
+        self.proposal_matcher = Matcher(
+            fg_iou_thresh, bg_iou_thresh, allow_low_quality_matches=False
+        )
 
-        self.fg_bg_sampler = BalancedPositiveNegativeSampler(batch_size_per_image, positive_fraction)
+        self.fg_bg_sampler = BalancedPositiveNegativeSampler(
+            batch_size_per_image, positive_fraction
+        )
 
         if bbox_reg_weights is None:
             bbox_reg_weights = (10.0, 10.0, 5.0, 5.0)
@@ -203,7 +210,7 @@ class EllipseRoIHeads(nn.Module):
         )
         self.loss_scale = loss_scale
 
-    def check_targets(self, targets: list[TargetDict]):
+    def check_targets(self, targets: list[TargetDict] | None) -> None:
         if targets is None:
             raise ValueError("targets should not be None")
         if not all(["boxes" in t for t in targets]):
@@ -211,28 +218,32 @@ class EllipseRoIHeads(nn.Module):
         if not all(["labels" in t for t in targets]):
             raise ValueError("Every element of targets should have a labels key")
         if not all(["ellipse_params" in t for t in targets]):
-            raise ValueError("Every element of targets should have a ellipse_params key")
+            raise ValueError(
+                "Every element of targets should have a ellipse_params key"
+            )
 
     def assign_targets_to_proposals(
-            self,
-            proposals: list[Tensor],
-            gt_boxes: list[Tensor],
-            gt_labels: list[Tensor]
+        self, proposals: list[Tensor], gt_boxes: list[Tensor], gt_labels: list[Tensor]
     ) -> tuple[list[Tensor], list[Tensor]]:
         matched_idxs = []
         labels = []
-        for proposals_in_image, gt_boxes_in_image, gt_labels_in_image in zip(proposals, gt_boxes, gt_labels):
-
+        for proposals_in_image, gt_boxes_in_image, gt_labels_in_image in zip(
+            proposals, gt_boxes, gt_labels
+        ):
             if gt_boxes_in_image.numel() == 0:
                 # Background image
                 device = proposals_in_image.device
                 clamped_matched_idxs_in_image = torch.zeros(
                     (proposals_in_image.shape[0],), dtype=torch.int64, device=device
                 )
-                labels_in_image = torch.zeros((proposals_in_image.shape[0],), dtype=torch.int64, device=device)
+                labels_in_image = torch.zeros(
+                    (proposals_in_image.shape[0],), dtype=torch.int64, device=device
+                )
             else:
                 #  set to self.box_similarity when https://github.com/pytorch/pytorch/issues/27495 lands
-                match_quality_matrix = box_ops.box_iou(gt_boxes_in_image, proposals_in_image)
+                match_quality_matrix = box_ops.box_iou(
+                    gt_boxes_in_image, proposals_in_image
+                )
                 matched_idxs_in_image = self.proposal_matcher(match_quality_matrix)
 
                 clamped_matched_idxs_in_image = matched_idxs_in_image.clamp(min=0)
@@ -241,11 +252,15 @@ class EllipseRoIHeads(nn.Module):
                 labels_in_image = labels_in_image.to(dtype=torch.int64)
 
                 # Label background (below the low threshold)
-                bg_inds = matched_idxs_in_image == self.proposal_matcher.BELOW_LOW_THRESHOLD
+                bg_inds = (
+                    matched_idxs_in_image == self.proposal_matcher.BELOW_LOW_THRESHOLD
+                )
                 labels_in_image[bg_inds] = 0
 
                 # Label ignore proposals (between low and high thresholds)
-                ignore_inds = matched_idxs_in_image == self.proposal_matcher.BETWEEN_THRESHOLDS
+                ignore_inds = (
+                    matched_idxs_in_image == self.proposal_matcher.BETWEEN_THRESHOLDS
+                )
                 labels_in_image[ignore_inds] = -1  # -1 is ignored by sampler
 
             matched_idxs.append(clamped_matched_idxs_in_image)
@@ -255,14 +270,21 @@ class EllipseRoIHeads(nn.Module):
     def subsample(self, labels: list[Tensor]) -> list[Tensor]:
         sampled_pos_inds, sampled_neg_inds = self.fg_bg_sampler(labels)
         sampled_inds = []
-        for img_idx, (pos_inds_img, neg_inds_img) in enumerate(zip(sampled_pos_inds, sampled_neg_inds)):
+        for img_idx, (pos_inds_img, neg_inds_img) in enumerate(
+            zip(sampled_pos_inds, sampled_neg_inds)
+        ):
             img_sampled_inds = torch.where(pos_inds_img | neg_inds_img)[0]
             sampled_inds.append(img_sampled_inds)
         return sampled_inds
 
     @staticmethod
-    def add_gt_proposals(proposals: list[Tensor], gt_boxes: list[Tensor]) -> list[Tensor]:
-        proposals = [torch.cat((proposal, gt_box)) for proposal, gt_box in zip(proposals, gt_boxes)]
+    def add_gt_proposals(
+        proposals: list[Tensor], gt_boxes: list[Tensor]
+    ) -> list[Tensor]:
+        proposals = [
+            torch.cat((proposal, gt_box))
+            for proposal, gt_box in zip(proposals, gt_boxes)
+        ]
 
         return proposals
 
@@ -271,7 +293,7 @@ class EllipseRoIHeads(nn.Module):
         features: dict[str, Tensor],
         proposals: list[Tensor],
         image_shapes: list[tuple[int, int]],
-        targets: list[dict[str, Tensor]] | None = None,
+        targets: list[TargetDict] | None = None,
     ) -> tuple[list[RoIPredictionDict], RoILossDict]:
         if targets is not None:
             for t in targets:
@@ -327,7 +349,7 @@ class EllipseRoIHeads(nn.Module):
     def select_training_samples(
         self,
         proposals: list[Tensor],
-        targets: list[dict[str, Tensor]] | None,
+        targets: list[TargetDict] | None,
     ) -> tuple[list[Tensor], list[Tensor], list[Tensor], list[Tensor]]:
         self.check_targets(targets)
         if targets is None:

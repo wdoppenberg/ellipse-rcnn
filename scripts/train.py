@@ -1,5 +1,3 @@
-from typing import Literal
-
 import pytorch_lightning as pl
 import typer
 import random
@@ -25,7 +23,7 @@ def train_model(
     weight_decay_max: float = 1e-3,
     num_workers: int = 4,
     batch_size: int = 16,
-    accelerator: str = "auto"
+    accelerator: str = "auto",
 ) -> None:
     datamodule = FDDBLightningDataModule(
         "data/FDDB", num_workers=num_workers, batch_size=batch_size

@@ -7,7 +7,7 @@ from torch import nn, Tensor
 from torchvision.models import ResNet50_Weights, WeightsEnum
 from torchvision.models.detection.anchor_utils import AnchorGenerator
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
-from torchvision.models.detection.faster_rcnn import TwoMLPHead, FastRCNNPredictor  # noqa: F
+from torchvision.models.detection.faster_rcnn import TwoMLPHead  # noqa: F
 from torchvision.models.detection.generalized_rcnn import GeneralizedRCNN
 from torchvision.models.detection.rpn import RPNHead, RegionProposalNetwork
 from torchvision.ops import MultiScaleRoIAlign
