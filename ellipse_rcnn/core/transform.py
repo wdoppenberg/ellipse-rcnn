@@ -1,8 +1,12 @@
-from typing import Optional, Dict, Tuple, List
+from typing import Tuple
 
 import torch
 from torch import Tensor
-from torchvision.models.detection.transform import GeneralizedRCNNTransform, resize_boxes, _resize_image_and_masks
+from torchvision.models.detection.transform import (
+    GeneralizedRCNNTransform,
+    resize_boxes,
+    _resize_image_and_masks,
+)
 
 from ellipse_rcnn.core.types import PredictionDict, TargetDict
 
@@ -12,7 +16,7 @@ def resize_ellipses(
 ) -> Tensor:
     """
     Resize ellipses based on image size transformation.
-    
+
     Parameters
     ----------
     ellipses : Tensor
@@ -21,7 +25,7 @@ def resize_ellipses(
         Original image size [H, W].
     new_size : tuple[int, int]
         New image size [H, W].
-    
+
     Returns
     -------
     Tensor
@@ -52,7 +56,7 @@ class EllipseRCNNTransform(GeneralizedRCNNTransform):
         self,
         image: Tensor,
         target: TargetDict | None = None,
-    ) -> Tuple[Tensor, dict[str, Tensor] | None]:
+    ) -> Tuple[Tensor, TargetDict | None]:
         h, w = image.shape[-2:]
         if self.training:
             if self._skip_resize:
@@ -60,7 +64,9 @@ class EllipseRCNNTransform(GeneralizedRCNNTransform):
             size = self.torch_choice(self.min_size)  # type: ignore
         else:
             size = self.min_size[-1]  # type: ignore
-        image, target = _resize_image_and_masks(image, size, self.max_size, target, self.fixed_size)
+        image, target = _resize_image_and_masks(
+            image, size, self.max_size, target, self.fixed_size
+        )
 
         if target is None:
             return image, target
@@ -82,10 +88,12 @@ class EllipseRCNNTransform(GeneralizedRCNNTransform):
         result: list[PredictionDict],
         image_shapes: list[tuple[int, int]],
         original_image_sizes: list[tuple[int, int]],
-    ) -> list[dict[str, Tensor]]:
+    ) -> list[PredictionDict]:
         if self.training:
             return result
-        for i, (pred, im_s, o_im_s) in enumerate(zip(result, image_shapes, original_image_sizes)):
+        for i, (pred, im_s, o_im_s) in enumerate(
+            zip(result, image_shapes, original_image_sizes)
+        ):
             boxes = pred["boxes"]
             boxes = resize_boxes(boxes, im_s, o_im_s)  # type: ignore
             result[i]["boxes"] = boxes

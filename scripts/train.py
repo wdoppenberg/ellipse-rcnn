@@ -15,17 +15,18 @@ app = typer.Typer(pretty_exceptions_show_locals=False)
 @app.command()
 def train_model(
     iterations: int = 1,
-    lr: float = None,
-    weight_decay: float = None,
+    lr: float | None = None,
+    weight_decay: float | None = None,
     lr_min: float = 1e-5,
     lr_max: float = 1e-3,
     weight_decay_min: float = 1e-5,
-    weight_decay_max: float = 1e-2,
+    weight_decay_max: float = 1e-3,
     num_workers: int = 4,
-):
+) -> None:
     datamodule = FDDBLightningDataModule(
-        "data/FDDB", num_workers=num_workers, batch_size=4
+        "data/FDDB", num_workers=num_workers, batch_size=16
     )
+
     if iterations > 1:
         print("Warning: Running with multiple iterations.")
 
@@ -56,9 +57,9 @@ def train_model(
             mode="min",
         )
         trainer = pl.Trainer(
-            accelerator="cpu",
-            precision="32-true",  # 32-bit needed for numerical stability
-            max_epochs=30,
+            accelerator="auto",
+            precision="bf16-mixed",
+            max_epochs=40,
             enable_checkpointing=True,
             detect_anomaly=True,
             callbacks=[checkpoint_callback, early_stopping_callback],

@@ -6,13 +6,24 @@ from torch.nn import functional as F
 from torchvision.models.detection.roi_heads import RoIHeads
 from torchvision.ops import boxes as box_ops
 
-from .encoder import EllipseEncoder
-from .kld import SymmetricKLDLoss
 from ellipse_rcnn.core.ops import (
-    ellipse_to_conic_matrix,
     remove_small_ellipses,
     bbox_ellipse,
 )
+from .encoder import EllipseEncoder
+from .kld import SymmetricKLDLoss
+
+
+class RoILossDict(TypedDict, total=False):
+    loss_classifier: Tensor
+    loss_ellipse_reg: Tensor
+
+
+class RoIPredictionDict(TypedDict, total=False):
+    ellipse_params: Tensor
+    boxes: Tensor
+    labels: Tensor
+    scores: Tensor
 
 
 class EllipseRCNNPredictor(nn.Module):
@@ -24,56 +35,97 @@ class EllipseRCNNPredictor(nn.Module):
     def __init__(self, in_channels: int, num_classes: int):
         super().__init__()
         self.cls_score = nn.Linear(in_channels, num_classes)
-        self.bbox_pred = nn.Linear(in_channels, num_classes * 6)  # [da, db, dcx, dcy, dsin_theta, dcos_theta]
 
-    def forward(self, x):
-        if x.dim() == 4:
-            torch._assert(
-                list(x.shape[2:]) == [1, 1],
-                f"x has the wrong shape, expecting the last two dimensions to be [1,1] instead of {list(x.shape[2:])}",
-            )
+        self.ellipse_pred = nn.Sequential(
+            nn.Linear(in_channels, in_channels // 4),
+            nn.ReLU(),
+            nn.Linear(in_channels // 4, num_classes * 5),
+        )
+
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+        """
+        Computes the classification logits and normalized ellipse parameters.
+
+        Parameters
+        ----------
+        x : Tensor
+            Input tensor representing the feature map from the previous layers.
+
+        Returns
+        -------
+        tuple[Tensor, Tensor]
+            A tuple containing:
+                * classification logits
+                * normalized ellipse parameters [da, db, dcx, dcy, dsin, dcos]
+        """
         x = x.flatten(start_dim=1)
         scores = self.cls_score(x)
-        ellipse_deltas = self.bbox_pred(x)
+
+        # Get raw predictions
+        ellipse_deltas = self.ellipse_pred(x)
+
+        # Split into components
+        num_preds = ellipse_deltas.shape[0]
+        ellipse_deltas = ellipse_deltas.reshape(num_preds, -1, 5)
+
+        # Extract angle predictions and convert to sin/cos
+        da = ellipse_deltas[..., 0]
+        db = ellipse_deltas[..., 1]
+        dcx = ellipse_deltas[..., 2]
+        dcy = ellipse_deltas[..., 3]
+        dtheta = ellipse_deltas[..., 4]
+
+        # Convert angle to normalized sin/cos
+        dsin = torch.sin(2 * dtheta)
+        dcos = torch.cos(2 * dtheta)
+
+        # Recombine
+        ellipse_deltas = torch.stack([da, db, dcx, dcy, dsin, dcos], dim=-1).reshape(
+            num_preds, -1
+        )
 
         return scores, ellipse_deltas
-
-
-class EllipseLossDict(TypedDict):
-    loss_ellipse_kld: Tensor
-    loss_ellipse_smooth_l1: Tensor
 
 
 def ellipse_rcnn_loss(
     class_logits: Tensor,
     ellipse_regression: Tensor,
-    labels: list[Tensor],
+    labels_cat: list[Tensor],
     regression_targets: list[Tensor],
-) -> tuple[Tensor, Tensor]:
+) -> RoILossDict:
     """
     Computes the loss for Ellipse R-CNN.
 
-    Args:
-        class_logits (Tensor)
-        ellipse_regression (Tensor)
-        labels (list[BoxList])
-        regression_targets (Tensor)
+    Parameters
+    ----------
+    class_logits : Tensor
+        The predicted class logits for each proposal.
+    ellipse_regression : Tensor
+        The predicted ellipse parameters for each proposal.
+    labels_cat : list[Tensor]
+        The ground truth class labels for each proposal.
+    regression_targets : list[Tensor]
+        The ground truth regression targets for ellipse parameters.
 
-    Returns:
-        classification_loss (Tensor)
-        ellipse_reg_loss (Tensor)
+    Returns
+    -------
+    RoILossDict
+        A dictionary containing the following loss components:
+        - loss_classifier : Tensor
+            The classification loss.
+        - loss_ellipse_reg : Tensor
+            The regression loss for ellipse parameters.
     """
-
-    labels = torch.cat(labels, dim=0)
+    labels_cat = torch.cat(labels_cat, dim=0)
     regression_targets = torch.cat(regression_targets, dim=0)
 
-    classification_loss = F.cross_entropy(class_logits, labels)
+    classification_loss = F.cross_entropy(class_logits, labels_cat)
 
     # get indices that correspond to the regression targets for
     # the corresponding ground truth labels, to be used with
     # advanced indexing
-    sampled_pos_inds_subset = torch.where(labels > 0)[0]
-    labels_pos = labels[sampled_pos_inds_subset]
+    sampled_pos_inds_subset = torch.where(labels_cat > 0)[0]  # type: ignore
+    labels_pos = labels_cat[sampled_pos_inds_subset]
     N, num_classes = class_logits.shape
     ellipse_regression = ellipse_regression.reshape(
         N, ellipse_regression.size(-1) // 6, 6
@@ -85,9 +137,12 @@ def ellipse_rcnn_loss(
         beta=1 / 9,
         reduction="sum",
     )
-    ellipse_reg_loss = ellipse_reg_loss / labels.numel()
+    ellipse_reg_loss = ellipse_reg_loss / labels_cat.numel()  # type: ignore
 
-    return classification_loss, ellipse_reg_loss
+    return RoILossDict(
+        loss_classifier=classification_loss,
+        loss_ellipse_reg=ellipse_reg_loss,
+    )
 
 
 class EllipseRoIHeads(RoIHeads):
@@ -152,16 +207,13 @@ class EllipseRoIHeads(RoIHeads):
     def has_ellipse_reg() -> bool:
         return True
 
-    def postprocess_ellipse_regressions(self):
-        pass
-
     def forward(
         self,
         features: dict[str, Tensor],
         proposals: list[Tensor],
         image_shapes: list[tuple[int, int]],
         targets: list[dict[str, Tensor]] | None = None,
-    ) -> tuple[list[dict[str, Tensor]], dict[str, Tensor]]:
+    ) -> tuple[list[RoIPredictionDict], RoILossDict]:
         if targets is not None:
             for t in targets:
                 floating_point_types = (torch.float, torch.double, torch.half)
@@ -184,27 +236,25 @@ class EllipseRoIHeads(RoIHeads):
         ellipse_features = self.ellipse_head(ellipse_features)
         class_logits, ellipse_regression = self.ellipse_predictor(ellipse_features)
 
-        result: list[dict[str, Tensor]] = []
-        losses = {}
+        pred: list[RoIPredictionDict] = []
+        losses: RoILossDict = {}
+
         if self.training:
             if labels is None or regression_targets is None:
                 raise ValueError(
                     "Labels and regression targets must not be None during training"
                 )
-            loss_classifier, loss_ellipse_reg = ellipse_rcnn_loss(
+            losses = ellipse_rcnn_loss(
                 class_logits, ellipse_regression, labels, regression_targets
             )
-            losses = {
-                "loss_classifier": loss_classifier,
-                "loss_ellipse_reg": loss_ellipse_reg,
-            }
         else:
+            pred = []
             ellipses, scores, labels, boxes = self.postprocess_detections(
                 class_logits, ellipse_regression, proposals, image_shapes
             )
             num_images = len(ellipses)
             for i in range(num_images):
-                result.append(
+                pred.append(
                     {
                         "ellipse_params": ellipses[i],
                         "boxes": boxes[i],
@@ -213,68 +263,13 @@ class EllipseRoIHeads(RoIHeads):
                     }
                 )
 
-        return result, losses
-
-    def ellipse_loss(
-        self,
-        pred: Tensor,
-        target: list[Tensor],
-        pos_matched_idxs: list[Tensor],
-        box_proposals: list[Tensor],
-    ) -> EllipseLossDict:
-        target = torch.cat(
-            [o[idxs] for o, idxs in zip(target, pos_matched_idxs)], dim=0
-        )
-
-        box_proposals = torch.cat(box_proposals, dim=0)
-
-        if target.numel() == 0:
-            return {
-                "loss_ellipse_kld": torch.tensor(
-                    0.0, device=pred.device, dtype=pred.dtype
-                ),
-                "loss_ellipse_smooth_l1": torch.tensor(
-                    0.0, device=pred.device, dtype=pred.dtype
-                ),
-            }
-
-        # Encode target
-        target_enc = self.ellipse_encoder.encode_single(
-            target,
-            proposals=box_proposals,
-        )
-
-        # Direct Smooth L1 loss
-        loss_smooth_l1 = F.smooth_l1_loss(
-            pred, target_enc, beta=(1 / 9), reduction="sum"
-        )
-        loss_smooth_l1 /= box_proposals.shape[0]
-        loss_smooth_l1 = loss_smooth_l1.nan_to_num(nan=0.0).clip(max=float(1e4))
-
-        # Decode prediction
-        a, b, x, y, theta = self.ellipse_encoder.decode_single(pred, box_proposals)
-
-        A_pred = ellipse_to_conic_matrix(a=a, b=b, theta=theta, x=x, y=y)
-        a_target, b_target, cx_target, cy_target, theta_target = target.unbind(-1)
-        A_target = ellipse_to_conic_matrix(
-            a=a_target, b=b_target, theta=theta_target, x=cx_target, y=cy_target
-        )
-
-        loss_kld = (
-            self.kld_loss_fn.forward(A_pred, A_target).clip(max=float(1e4)).mean() * 0.1
-        )
-        return {
-            "loss_ellipse_kld": loss_kld,
-            "loss_ellipse_smooth_l1": loss_smooth_l1,
-        }
+        return pred, losses
 
     def select_training_samples(
         self,
         proposals: list[Tensor],
         targets: list[dict[str, Tensor]] | None,
-    ) -> tuple[
-        list[Tensor], list[Tensor], list[Tensor], list[Tensor]
-    ]:
+    ) -> tuple[list[Tensor], list[Tensor], list[Tensor], list[Tensor]]:
         self.check_targets(targets)
         if targets is None:
             raise ValueError("targets should not be None")
@@ -317,9 +312,7 @@ class EllipseRoIHeads(RoIHeads):
         ellipse_regression: Tensor,
         proposals: list[Tensor],
         image_shapes: list[tuple[int, int]],
-    ) -> tuple[
-        list[Tensor], list[Tensor], list[Tensor], list[Tensor]
-    ]:
+    ) -> tuple[list[Tensor], list[Tensor], list[Tensor], list[Tensor]]:
         device = class_logits.device
         num_classes = class_logits.shape[-1]
 
@@ -348,7 +341,7 @@ class EllipseRoIHeads(RoIHeads):
 
             # remove predictions with the background label
             # TODO: Ellipse predictions should be [N, C, 5]?
-            # ellipses = ellipses[:, 1:]
+            ellipses = ellipses[:, 1:]
             scores = scores[:, 1:]
             labels = labels[:, 1:]
 
@@ -362,7 +355,7 @@ class EllipseRoIHeads(RoIHeads):
             ellipses, scores, labels = ellipses[inds], scores[inds], labels[inds]
 
             # remove empty boxes
-            keep = remove_small_ellipses(ellipses, min_size=1e-2)
+            keep = remove_small_ellipses(ellipses, min_size=1e-1)
             ellipses, scores, labels = ellipses[keep], scores[keep], labels[keep]
 
             boxes = bbox_ellipse(ellipses)

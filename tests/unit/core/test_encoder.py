@@ -31,9 +31,7 @@ def test_ellipse_encoding_decoding():
     encoded = encode_ellipses(ellipses, proposals=proposals, weights=weights)
 
     # Decode
-    pred = decode_ellipses(
-        encoded, proposals, weights
-    )
+    pred = decode_ellipses(encoded, proposals, weights).squeeze()
 
     pred_a, pred_b, pred_x, pred_y, pred_theta = pred.unbind(-1)
 
@@ -74,9 +72,9 @@ def test_weight_scaling():
     encoded = encode_ellipses(ellipses, proposals=proposals, weights=weights)
 
     # Decode
-    pred_a, pred_b, pred_x, pred_y, pred_theta = decode_ellipses(
-        encoded, proposals, weights
-    ).unbind(-1)
+    pred_a, pred_b, pred_x, pred_y, pred_theta = (
+        decode_ellipses(encoded, proposals, weights).squeeze().unbind(-1)
+    )
 
     # Test reconstruction
     torch.testing.assert_close(pred_a, a, rtol=1e-4, atol=1e-4)
@@ -112,9 +110,9 @@ def test_batch_processing():
         encoded = encode_ellipses(ellipses, proposals=proposals, weights=weights)
 
         # Decode
-        pred_a, pred_b, pred_x, pred_y, pred_theta = decode_ellipses(
-            encoded, proposals, weights
-        ).unbind(-1)
+        pred_a, pred_b, pred_x, pred_y, pred_theta = (
+            decode_ellipses(encoded, proposals, weights).squeeze(1).unbind(-1)
+        )
 
         assert encoded.shape == (batch_size, 6)
         assert pred_a.shape == torch.Size([batch_size])
@@ -136,9 +134,9 @@ def test_edge_cases():
     proposals = torch.tensor([[-3.0, -3.0, 3.0, 3.0]])
 
     encoded = encode_ellipses(ellipses, proposals=proposals, weights=weights)
-    pred_a, pred_b, pred_x, pred_y, pred_theta = decode_ellipses(
-        encoded, proposals, weights
-    ).unbind(-1)
+    pred_a, pred_b, pred_x, pred_y, pred_theta = (
+        decode_ellipses(encoded, proposals, weights).squeeze(1).unbind(-1)
+    )
 
     torch.testing.assert_close(pred_a, a, rtol=1e-4, atol=1e-4)
     torch.testing.assert_close(pred_b, b, rtol=1e-4, atol=1e-4)
@@ -208,14 +206,12 @@ def test_ellipse_encoder():
     assert encoded[1].shape == (batch_size_2, 6)
 
     # Test decoding multiple images
-    pred = encoder.decode(
-        torch.cat(encoded), proposals
-    )
+    pred = encoder.decode(torch.cat(encoded), proposals)
 
-    pred_a = tuple(p[:, 0] for p in pred)
-    pred_b = tuple(p[:, 1] for p in pred)
-    pred_cx = tuple(p[:, 2] for p in pred)
-    pred_cy = tuple(p[:, 3] for p in pred)
+    pred_a = tuple(p[:, 0, 0] for p in pred)
+    pred_b = tuple(p[:, 0, 1] for p in pred)
+    pred_cx = tuple(p[:, 0, 2] for p in pred)
+    pred_cy = tuple(p[:, 0, 3] for p in pred)
 
     # Check decoded shapes
     assert len(pred_a) == 2
@@ -249,7 +245,7 @@ def test_ellipse_encoder_empty_inputs():
     assert encoded[0].shape == (0, 6)
 
     decoded = encoder.decode(encoded[0], empty_proposals)
-    assert all(t.shape == (0, 5) for t in decoded)
+    assert all(t.shape == (0, 1, 5) for t in decoded)
 
 
 def test_ellipse_encoder_clipping():
@@ -278,11 +274,9 @@ def test_ellipse_encoder_clipping():
     encoded = encoder.encode(reference_ellipses, [proposals])
 
     # Decode with clipping
-    pred = encoder.decode(
-        encoded[0], [proposals]
-    )
+    pred = encoder.decode(encoded[0], [proposals])
 
-    pred_a, pred_b, pred_cx, pred_cy, pred_theta = pred[0].unbind(-1)
+    pred_a, pred_b, pred_cx, pred_cy, pred_theta = pred[0].squeeze(1).unbind(-1)
 
     # The maximum allowed size should be the proposal size * exp(clip_value)
     max_allowed = 2.0 * math.exp(clip_value)  # proposal width/height is 2.0
@@ -318,9 +312,9 @@ def test_ellipse_encoder_single():
     assert encoded.shape == (1, 6)
 
     # Test decode_single
-    pred_a, pred_b, pred_cx, pred_cy, pred_theta = encoder.decode_single(
-        encoded, proposals
-    ).unbind(-1)
+    pred_a, pred_b, pred_cx, pred_cy, pred_theta = (
+        encoder.decode_single(encoded, proposals).squeeze(1).unbind(-1)
+    )
 
     torch.testing.assert_close(pred_a, a, rtol=1e-4, atol=1e-4)
     torch.testing.assert_close(pred_b, b, rtol=1e-4, atol=1e-4)

@@ -1,13 +1,14 @@
 import typer
 import numpy as np
 from matplotlib import pyplot as plt
+import seaborn as sns
 
 from ellipse_rcnn.data.fddb import FDDB
 from ellipse_rcnn import EllipseRCNN
 from ellipse_rcnn.core.model import EllipseRCNNLightning
 from ellipse_rcnn.utils.viz import plot_ellipses, plot_bboxes
 
-app = typer.Typer()
+app = typer.Typer(pretty_exceptions_show_locals=False)
 
 
 @app.command()
@@ -31,15 +32,16 @@ def predict(
     # Load the FDDB dataset
     typer.echo(f"Loading dataset from {data_path}...")
     ds = FDDB(data_path)
-    ds_raw = FDDB(data_path, transform=lambda x: x)
+    ds_raw = FDDB(data_path)
+    ds_raw.transform = lambda x: x
 
-    # Get the specific image and resolution
     import random
 
     # Make predictions
-    fig, axs = plt.subplots(3, 3, figsize=(15, 15))
+    sns.set_theme(style="whitegrid")
+    fig, axs = plt.subplots(1, 6, figsize=(16, 4))
     axs = axs.flatten()
-    for ax in axs:
+    for i, ax in enumerate(axs):
         idx = random.randint(0, len(ds))
         image, target = ds[idx]
         image_raw, _ = ds_raw[idx]
@@ -48,9 +50,11 @@ def predict(
         if not len(pred[0]["boxes"][score_mask]) > 0:
             typer.echo(f"No predictions detected for sampled image {idx + 1}.")
         ax.set_aspect("equal")
-        ax.grid(True)
+        ax.axis("off")
         ax.imshow(np.array(image_raw))
-        pred = pred[0]["ellipse_params"].view(-1, 5)
+
+        ellipses = pred[0]["ellipse_params"][score_mask].view(-1, 5)
+        boxes = pred[0]["boxes"][score_mask].view(-1, 4)
 
         # Plot ellipses
         plot_ellipses(
@@ -58,8 +62,10 @@ def predict(
             ax=ax,
             plot_centers=plot_centers,
             rim_color="b",
+            alpha=1,
         )
-        plot_ellipses(pred[score_mask], ax=ax, plot_centers=plot_centers)
+
+        plot_ellipses(ellipses, ax=ax, plot_centers=plot_centers, alpha=0.7)
 
         # Plot bounding boxes
         plot_bboxes(
@@ -67,9 +73,9 @@ def predict(
             box_type="xyxy",
             ax=ax,
             rim_color="b",
-            alpha=0.5,
+            alpha=1,
         )
-        # plot_bboxes(pred[0]["boxes"][score_mask], box_type="xyxy", ax=ax)
+        plot_bboxes(boxes, box_type="xyxy", ax=ax)
 
     plt.tight_layout()
     plt.show()

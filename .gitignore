@@ -131,8 +131,10 @@ dmypy.json
 
 # Data folders
 /data/
+/data*
 lightning_logs/
 tb_logs/
+/notebooks/data
 
 # Ruff
 .ruff_cache/

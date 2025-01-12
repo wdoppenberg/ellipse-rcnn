@@ -53,5 +53,5 @@ def sample_conic_ellipses(
 ) -> torch.Tensor:
     a, b, x, y, theta = sample_parametric_ellipses(
         batch_size, a_range, b_range, theta_range, xy_range
-    )
+    ).unbind(-1)
     return ellipse_to_conic_matrix(a=a, b=b, x=x, y=y, theta=theta)

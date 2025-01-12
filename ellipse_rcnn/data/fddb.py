@@ -3,33 +3,35 @@ Data loader and module for the FDDB dataset.
 https://vis-www.cs.umass.edu/fddb/
 """
 
-from glob import glob
-from typing import Any, Self
+import os
 from pathlib import Path
+from typing import Self
 
-import torch
-import pandas as pd
 import PIL.Image
-import torchvision.transforms
+import pandas as pd
 import pytorch_lightning as pl
-from torch.utils.data import DataLoader, random_split
+import torch
+import torchvision.transforms
+from torch.utils.data import DataLoader
+from torchvision.datasets.utils import download_url, extract_archive
 
-from ellipse_rcnn.core.types import TargetDict, ImageTargetTuple, EllipseTuple
 from ellipse_rcnn.core.ops import (
     bbox_ellipse,
 )
-from ellipse_rcnn.data.base import EllipseDatasetBase, collate_fn
+from ellipse_rcnn.core.types import TargetDict, ImageTargetTuple, EllipseTuple
+from ellipse_rcnn.data.base import EllipseDatasetBase
+from ellipse_rcnn.data.utils import collate_fn
 
 
-def preprocess_label_files(root_path: str) -> dict[str, list[EllipseTuple]]:
-    label_files = glob(f"{root_path}/labels/*.txt")
+def preprocess_label_files(root_path: Path) -> dict[str, list[EllipseTuple]]:
+    label_files = root_path.glob("labels/*.txt")
 
     file_paths = []
     ellipse_data = []
 
     for filename in label_files:
         with open(filename) as f:
-            if "ellipseList" not in filename:
+            if "ellipseList" not in filename.name:
                 file_paths += [p.strip("\n") for p in f.readlines()]
             else:
                 ellipse_data += [p.strip("\n") for p in f.readlines()]
@@ -63,22 +65,110 @@ def preprocess_label_files(root_path: str) -> dict[str, list[EllipseTuple]]:
 
 
 class FDDB(EllipseDatasetBase):
+    resources = {
+        "labels": (
+            "http://vis-www.cs.umass.edu/fddb/FDDB-folds.tgz",
+            None,
+        ),
+        "images": (
+            "http://vis-www.cs.umass.edu/fddb/originalPics.tar.gz",
+            None,
+        ),
+    }
+
     def __init__(
         self,
-        root_path: str | Path,
+        root: str | Path = Path("./data/FDDB"),
+        train: bool = True,
+        download: bool = False,
+        verbose: bool = True,
         ellipse_dict: dict[str, list[EllipseTuple]] | None = None,
-        transform: Any = None,
     ) -> None:
-        self.root_path = Path(root_path) if isinstance(root_path, str) else root_path
-        if transform is None:
-            self.transform = torchvision.transforms.Compose(
-                [
-                    torchvision.transforms.ToTensor(),
-                ]
+        """
+        Initializes the FDDB dataset object.
+
+        Parameters
+        ----------
+        root : str or Path, optional
+            Root directory of the dataset where ``FDDB/processed/training.pt`` and
+            ``FDDB/processed/test.pt`` exist. Defaults to './data/FDDB'.
+        train : bool, optional
+            If True, creates the dataset from ``training.pt``; otherwise, from ``test.pt``.
+            Defaults to True.
+        download : bool, optional
+            If True, downloads the dataset from the internet and stores it in the root directory.
+            Defaults to True.
+        verbose : bool, optional
+            If True, enables verbose logging. Defaults to False.
+        ellipse_dict : dict[str, list[EllipseTuple]], optional
+            Dictionary containing the ellipse data for each image. If not provided, it will be
+            generated from the label files. Defaults to None.
+
+        Raises
+        ------
+        RuntimeError
+            If the dataset is not found and `download` is False.
+        """
+        super().__init__()
+        self.root: Path = Path(root)
+        self.train = train
+        self.verbose = verbose
+
+        if download:
+            self.download()
+
+        if not self._check_exists():
+            raise RuntimeError("Dataset not found. Use download=True to download it")
+
+        self.transform = torchvision.transforms.Compose(
+            [
+                torchvision.transforms.ToTensor(),
+            ]
+        )
+        self.ellipse_dict = ellipse_dict or preprocess_label_files(self.root)
+
+    def _check_exists(self) -> bool:
+        """
+        Check if the dataset has been downloaded and extracted properly.
+
+        Returns
+        -------
+        bool
+            True if the dataset is present, False otherwise.
+        """
+        images_path = self.root / "images"
+        annotations_path = self.root / "labels"
+        return images_path.exists() and annotations_path.exists()
+
+    def download(self) -> None:
+        """
+        Download and extract the FDDB dataset.
+
+        If the dataset already exists, no action is taken.
+
+        Raises
+        ------
+        OSError
+            If there is an issue during the download or extraction.
+        """
+        if self._check_exists():
+            if self.verbose:
+                print(f"FDDB Dataset already present under {self.root}.")
+            return
+
+        self.root.mkdir(parents=True, exist_ok=True, mode=0o755)
+
+        # Download and extract files
+
+        for subfolder, (url, md5) in self.resources.items():
+            filename = os.path.basename(url)
+            download_url(url, self.root, filename, md5)
+            extract_archive(
+                self.root / filename, self.root / subfolder, remove_finished=True
             )
-        else:
-            self.transform = transform
-        self.ellipse_dict = ellipse_dict or preprocess_label_files(root_path)
+
+        if self.verbose:
+            print("Dataset downloaded and extracted successfully")
 
     def __len__(self) -> int:
         return len(self.ellipse_dict)
@@ -110,14 +200,14 @@ class FDDB(EllipseDatasetBase):
             image_id=image_id,
             area=area,
             iscrowd=iscrowd,
-            ellipse_params=ellipse_params
+            ellipse_params=ellipse_params,
         )
 
         return target
 
     def load_image(self, index: int) -> PIL.Image.Image:
         key = list(self.ellipse_dict.keys())[index]
-        file_path = str(Path(self.root_path) / "images" / Path(key)) + ".jpg"
+        file_path = str(Path(self.root) / "images" / Path(key)) + ".jpg"
         return PIL.Image.open(file_path)
 
     def __getitem__(self, idx: int) -> ImageTargetTuple:
@@ -139,13 +229,23 @@ class FDDB(EllipseDatasetBase):
         """
         Splits the dataset into two subsets based on the given fraction.
 
-        Args:
-            fraction (float): Fraction of the dataset for the first subset (0 < fraction < 1).
-            shuffle (bool): If True, dataset keys will be shuffled before splitting.
+        Parameters
+        ----------
+        fraction : float
+            Fraction of the dataset for the first subset (0 < fraction < 1).
+        shuffle : bool, optional
+            If True, dataset keys will be shuffled before splitting. Defaults to False.
 
-        Returns:
-            tuple[FDDB, FDDB]: Two FDDB instances, one with the fraction of data,
-                               and the other with the remaining data.
+        Returns
+        -------
+        tuple of FDDB
+            Two FDDB instances, the first having the fraction of data, and
+            the other with the remaining data.
+
+        Raises
+        ------
+        ValueError
+            If the fraction is not between 0 and 1.
         """
         if not (0 < fraction < 1):
             raise ValueError("The fraction must be between 0 and 1.")
@@ -156,20 +256,19 @@ class FDDB(EllipseDatasetBase):
 
             random.shuffle(keys)
 
-        total_length = len(keys)
+        total_length = len(self)
         split_index = int(total_length * fraction)
 
-        subset1_keys = keys[:split_index]
-        subset2_keys = keys[split_index:]
+        subset1_keys = keys[split_index:]
+        subset2_keys = keys[:split_index]
 
         subset1_ellipse_dict = {key: self.ellipse_dict[key] for key in subset1_keys}
         subset2_ellipse_dict = {key: self.ellipse_dict[key] for key in subset2_keys}
 
-        subset1 = FDDB(
-            self.root_path, ellipse_dict=subset1_ellipse_dict, transform=self.transform
-        )
+        subset1 = FDDB(self.root, ellipse_dict=subset1_ellipse_dict)
         subset2 = FDDB(
-            self.root_path, ellipse_dict=subset2_ellipse_dict, transform=self.transform
+            self.root,
+            ellipse_dict=subset2_ellipse_dict,
         )
 
         return subset1, subset2
@@ -178,34 +277,45 @@ class FDDB(EllipseDatasetBase):
 class FDDBLightningDataModule(pl.LightningDataModule):
     def __init__(
         self,
-        data_dir: str,
+        data_dir: str | Path = Path("./data/FDDB"),
         batch_size: int = 16,
-        train_fraction: float = 0.8,
-        transform: Any = None,
+        train_fraction: float = 0.9,
         num_workers: int = 0,
     ) -> None:
         super().__init__()
-        self.data_dir = data_dir
+        self.data_dir = Path(data_dir)
         self.batch_size = batch_size
         self.train_fraction = train_fraction
-        self.transform = transform
         self.dataset: FDDB | None = None
-        self.train_dataset = None
-        self.val_dataset = None
+        self.train_dataset: FDDB | None = None
+        self.val_dataset: FDDB | None = None
+        self.test_dataset: FDDB | None = None
         self.num_workers = num_workers
 
     def prepare_data(self) -> None:
         # Ensure data preparation or downloading is done here.
-        pass
+        self.dataset = FDDB(self.data_dir, download=True)
 
     def setup(self, stage: str | None = None) -> None:
-        # Instantiate the FDDB dataset and split it into training and validation subsets.
-        self.dataset = FDDB(self.data_dir, transform=self.transform)
+        if self.dataset is None:
+            self.dataset = FDDB(self.data_dir, download=False)
 
-        train_size = int(len(self.dataset) * self.train_fraction)
-        val_size = len(self.dataset) - train_size
-        self.train_dataset, self.val_dataset = random_split(
-            self.dataset, [train_size, val_size]
+        # Instantiate the FDDB dataset and split it into training and validation subsets.
+        self.train_dataset, self.val_dataset = self.dataset.split(
+            1 - self.train_fraction
+        )
+
+        # Assign train/val datasets for use in dataloaders
+        if stage == "fit" or stage is None or stage == "validate":
+            self.train_dataset = self.train_dataset
+            self.val_dataset = self.val_dataset
+        elif stage == "test":
+            self.test_dataset = self.val_dataset
+        else:
+            raise ValueError(f"Invalid stage {stage}.")
+
+        print(
+            f"Data loaded. Train dataset: {len(self.train_dataset)} images, Val dataset: {len(self.val_dataset)} images"
         )
 
     def train_dataloader(self) -> DataLoader[ImageTargetTuple]:

@@ -11,6 +11,7 @@ A PyTorch (Lightning) implementation of Ellipse R-CNN. Originally developed for 
 The methodology is based on [this paper](https://arxiv.org/abs/2001.11584), albeit different in the sense that this model uses the regressed bounding box predictions instead of region proposals as the base for predicted normalised ellipse parameters.
 
 
+
 ## Setup
 
 Make sure you have [uv](https://docs.astral.sh/uv/getting-started/installation/) installed.
@@ -18,7 +19,7 @@ Make sure you have [uv](https://docs.astral.sh/uv/getting-started/installation/)
 From the project root, run:
 
 ```shell
-uv sync
+uv sync --all-groups
 ```
 
 This sets up a new virtual environment and installs all packages into it.
@@ -31,32 +32,24 @@ uv run scripts/train.py --help
 uv run scripts/sample.py --help
 ```
 
+If you want to do experiment tracking, use tensorboard:
+
+```shell
+uvx tensorboard --logdir=lightning_logs
+```
+
+# Data
+
 Currently the training script only supports training with FDDB. See the required steps for
-getting & structuring the data below. More datasets will be supported later.
+getting & structuring the data below. More datasets can be supported if needed.
+If you want to download a dataset directly, use the following script:
+
+```shell
+uv run scripts/download.py <DATASET_NAME> [Optional: --root <ROOT_FOLDER>]
+```
 
 ## FDDB Data
 
-### Download
-Visit https://vis-www.cs.umass.edu/fddb/ and download:
-* Original, unannotated set of images
-* Face annotations
-
-
-### File structure
-
-Download & unzip until you achieve the following file structure (from root):
-
-
-```
-data
-└── FDDB
-   ├── images
-   │  ├── 2002
-   │  └── 2003
-   └── labels
-      ├── FDDB-fold-01-ellipseList.txt
-      ├── FDDB-fold-01.txt
-      ├── FDDB-fold-02-ellipseList.txt
-      ├── FDDB-fold-02.txt
-      ├── ...
-```
+The [Face Detection Dataset & Benchmark](https://vis-www.cs.umass.edu/fddb/) (FDDB) [module](ellipse_rcnn/data/fddb.py) contains the `Dataset` subclass that does all the data loading and
+transformations. It will download and unpack the necessary files to `./data/FDDB`. Simply running the training
+script will download the necessary files.

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Literal
 
 import numpy as np
@@ -17,9 +15,9 @@ def plot_ellipses(
     figsize: tuple[float, float] = (15, 15),
     plot_centers: bool = False,
     ax: Axes | None = None,
-    rim_color="r",
-    alpha=1.0,
-):
+    rim_color: str = "r",
+    alpha: float = 1.0,
+) -> None:
     a, b, cx, cy, theta = ellipse_params.unbind(-1)
 
     a, b, theta, cx, cy = map(
@@ -39,6 +37,7 @@ def plot_ellipses(
         transOffset=ax.transData,
         facecolors="None",
         edgecolors=rim_color,
+        linewidths=2.5,
         alpha=alpha,
     )
     ax.add_collection(ec)
@@ -56,9 +55,9 @@ def plot_bboxes(
     figsize: tuple[float, float] = (15, 15),
     plot_centers: bool = False,
     ax: Axes | None = None,
-    rim_color="r",
-    alpha=1.0,
-):
+    rim_color: str = "r",
+    alpha: float = 1.0,
+) -> None:
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize, subplot_kw={"aspect": "equal"})
 

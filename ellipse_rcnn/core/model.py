@@ -13,7 +13,12 @@ from torchvision.models.detection.rpn import RPNHead, RegionProposalNetwork
 from torchvision.ops import MultiScaleRoIAlign
 
 from .roi_head import EllipseRoIHeads, EllipseRCNNPredictor
-from ellipse_rcnn.core.types import CollatedBatchType, TargetDict, LossDict, PredictionDict
+from ellipse_rcnn.core.types import (
+    CollatedBatchType,
+    TargetDict,
+    LossDict,
+    PredictionDict,
+)
 from .transform import EllipseRCNNTransform
 
 
@@ -52,7 +57,7 @@ class EllipseRCNN(GeneralizedRCNN):
         box_bg_iou_thresh: float = 0.5,
         box_batch_size_per_image: int = 512,
         box_positive_fraction: float = 0.25,
-        bbox_reg_weights: Optional[Tuple[float, float, float, float]] = None,
+        bbox_reg_weights: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
         # Ellipse regressor
         ellipse_roi_pool: Optional[nn.Module] = None,
         ellipse_head: Optional[nn.Module] = None,
@@ -201,7 +206,9 @@ class EllipseRCNN(GeneralizedRCNN):
 
         super().__init__(backbone, rpn, roi_heads, transform)
 
-    def forward(self, images: list[Tensor], targets: list[TargetDict] | None = None) -> LossDict | list[PredictionDict]:
+    def forward(
+        self, images: list[Tensor], targets: list[TargetDict] | None = None
+    ) -> LossDict | list[PredictionDict]:
         return super().forward(images, targets)  # type: ignore
 
 
@@ -215,12 +222,14 @@ class EllipseRCNNLightning(pl.LightningModule):
         super().__init__()
         self.model = model
         self.save_hyperparameters(ignore=["model"])
+        self.lr = lr
+        self.weight_decay = weight_decay
 
     def configure_optimizers(self) -> Any:
         optimizer = torch.optim.AdamW(
             self.model.parameters(),
-            lr=self.hparams.lr,
-            weight_decay=self.hparams.weight_decay,
+            lr=self.lr,
+            weight_decay=self.weight_decay,
             amsgrad=True,
         )
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -231,9 +240,7 @@ class EllipseRCNNLightning(pl.LightningModule):
             "lr_scheduler": {"scheduler": scheduler, "monitor": "val/loss_total"},
         }
 
-    def training_step(
-        self, batch: CollatedBatchType, batch_idx: int = 0
-    ) -> Tensor:
+    def training_step(self, batch: CollatedBatchType, batch_idx: int = 0) -> Tensor:
         images, targets = batch
         loss_dict = self.model(images, targets)
         self.log_dict(
@@ -248,9 +255,7 @@ class EllipseRCNNLightning(pl.LightningModule):
 
         return loss
 
-    def validation_step(
-        self, batch: CollatedBatchType, batch_idx: int = 0
-    ) -> Tensor:
+    def validation_step(self, batch: CollatedBatchType, batch_idx: int = 0) -> Tensor:
         self.train(True)
         images, targets = batch
 

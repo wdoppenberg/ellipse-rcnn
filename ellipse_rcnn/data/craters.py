@@ -2,7 +2,7 @@ import h5py
 import torch
 from torch.utils.data import Dataset
 
-from ellipse_rcnn.core.types import TargetDict, ImageTargetTuple
+from ellipse_rcnn.core.types import ImageTargetTuple
 from ellipse_rcnn.core.ops import bbox_ellipse_matrix
 
 
@@ -15,6 +15,9 @@ class CraterEllipseDataset(Dataset):
     def __init__(self, file_path: str, group: str) -> None:
         self.file_path = file_path
         self.group = group
+        raise NotImplementedError(
+            "This dataset is not yet implemented. Please contact the author for more information."
+        )
 
     def __getitem__(self, idx: torch.Tensor) -> ImageTargetTuple:
         with h5py.File(self.file_path, "r") as dataset:
@@ -38,16 +41,16 @@ class CraterEllipseDataset(Dataset):
 
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
 
-        target = TargetDict(
+        target = dict(
             boxes=boxes,
             labels=labels,
             image_id=image_id,
             area=area,
             iscrowd=iscrowd,
-            ellipse_matrices=ellipse_matrices,
+            ellipse_matrices=ellipse_matrices,  # type: ignore
         )
 
-        return image, target
+        return image, target  # type: ignore
 
     def __len__(self) -> int:
         with h5py.File(self.file_path, "r") as f:
