@@ -1,161 +1,81 @@
-from __future__ import annotations
+from typing import Literal
 
-from typing import Dict, Optional
-
+import numpy as np
 import torch
+from torchvision.ops import boxes as box_ops
+from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
-from matplotlib.patches import Ellipse, Rectangle
-from matplotlib.collections import PatchCollection
+from matplotlib.collections import EllipseCollection, PatchCollection
+from matplotlib.patches import Rectangle
+from ellipse_rcnn.core.ops import ellipse_center
 
-from ellipse_rcnn.utils.conics import bbox_ellipse, ellipse_angle
+
+def plot_ellipses(
+    ellipse_params: torch.Tensor,
+    figsize: tuple[float, float] = (15, 15),
+    plot_centers: bool = False,
+    ax: Axes | None = None,
+    rim_color: str = "r",
+    alpha: float = 1.0,
+) -> None:
+    a, b, cx, cy, theta = ellipse_params.unbind(-1)
+
+    a, b, theta, cx, cy = map(
+        lambda t: t.detach().cpu().numpy(),
+        (a, b, theta, cx, cy),
+    )
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize, subplot_kw={"aspect": "equal"})
+
+    ec = EllipseCollection(
+        a * 2,
+        b * 2,
+        np.degrees(theta),
+        units="xy",
+        offsets=np.column_stack((cx, cy)),
+        transOffset=ax.transData,
+        facecolors="None",
+        edgecolors=rim_color,
+        linewidths=2.5,
+        alpha=alpha,
+    )
+    ax.add_collection(ec)
+
+    if plot_centers:
+        crater_centers = ellipse_center(ellipse_params)
+        for k, c_i in enumerate(crater_centers):
+            x, y = c_i[0], c_i[1]
+            ax.text(x.item(), y.item(), str(k), color=rim_color)
 
 
-class DetectionPlotter:
-    def __init__(
-        self,
-        x_min: torch.Tensor,
-        y_min: torch.Tensor,
-        x_max: torch.Tensor,
-        y_max: torch.Tensor,
-        theta: Optional[torch.Tensor] = None,
-    ):
-        """
-        Constructs a DetectionPlotter from a tensor of bounding boxes.
+def plot_bboxes(
+    boxes: torch.Tensor,
+    box_type: Literal["xyxy", "xywh", "cxcywh"] = "xyxy",
+    figsize: tuple[float, float] = (15, 15),
+    plot_centers: bool = False,
+    ax: Axes | None = None,
+    rim_color: str = "r",
+    alpha: float = 1.0,
+) -> None:
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize, subplot_kw={"aspect": "equal"})
 
-        Parameters
-        ----------
-        x_min:
-            A tensor of the minimum x-coordinates of the bounding boxes.
-        y_min:
-            A tensor of the minimum y-coordinates of the bounding boxes.
-        x_max:
-            A tensor of the maximum x-coordinates of the bounding boxes.
-        y_max:
-            A tensor of the maximum y-coordinates of the bounding boxes.
-        theta:
-            (Optional) A tensor containing the angle of the ellipses in radians.
-        """
-        self.x_min = x_min
-        self.x_max = x_max
-        self.y_min = y_min
-        self.y_max = y_max
-        if theta is None:
-            self.theta = torch.zeros_like(x_min)
-        else:
-            self.theta = theta
+    if box_type != "xyxy":
+        boxes = box_ops.box_convert(boxes, box_type, "xyxy")
 
-    @property
-    def w(self) -> torch.Tensor:
-        """
-        Returns the width of the bounding box.
-        """
-        return self.x_max - self.x_min
+    boxes = boxes.detach().cpu().numpy()
+    rectangles = []
+    for k, b_i in enumerate(boxes):
+        x1, y1, x2, y2 = b_i
+        rectangles.append(Rectangle((x1, y1), x2 - x1, y2 - y1))
 
-    @property
-    def h(self) -> torch.Tensor:
-        """
-        Returns the height of the bounding box.
-        """
-        return self.y_max - self.y_min
+    collection = PatchCollection(
+        rectangles, edgecolor=rim_color, facecolor="none", alpha=alpha
+    )
+    ax.add_collection(collection)
 
-    @property
-    def cx(self) -> torch.Tensor:
-        """
-        Returns the center x-coordinate of the bounding box.
-        """
-        return self.x_min + (self.w / 2)
-
-    @property
-    def cy(self) -> torch.Tensor:
-        """
-        Returns the center y-coordinate of the bounding box.
-        """
-        return self.y_min + (self.h / 2)
-
-    @classmethod
-    def from_boxes(cls, boxes: torch.Tensor, theta: Optional[torch.Tensor] = None) -> DetectionPlotter:
-        """
-        Constructs a DetectionPlotter from a tensor of bounding boxes.
-
-        Parameters
-        ----------
-        boxes:
-            A tensor of bounding boxes in the format [x_min, y_min, x_max, y_max].
-        theta:
-            (Optional) A tensor of the same shape as `boxes` containing the angle of the ellipses in radians.
-
-        Returns
-        -------
-        DetectionPlotter
-            A DetectionPlotter object.
-        """
-        return cls(boxes[..., 0], boxes[..., 1], boxes[..., 2], boxes[..., 3], theta)
-
-    @classmethod
-    def from_ellipses(cls, ellipse_matrices: torch.Tensor) -> DetectionPlotter:
-        """
-        Constructs a DetectionPlotter from a tensor of ellipse matrices.
-
-        Parameters
-        ----------
-        ellipse_matrices:
-            A tensor of ellipse matrices [N, 3, 3].
-
-        Returns
-        -------
-        DetectionPlotter
-            A DetectionPlotter object.
-        """
-        theta = ellipse_angle(ellipse_matrices)
-        return cls.from_boxes(bbox_ellipse(ellipse_matrices), theta)
-
-    def plot(
-        self,
-        ax: Axes,
-        convert_to_degrees: bool = True,
-        ellipse_kwargs: Optional[Dict] = None,
-        rectangle_kwargs: Optional[Dict] = None,
-    ) -> Axes:
-        """
-        Plots the bounding boxes and ellipses on the given axes.
-
-        Parameters
-        ----------
-        ax:
-            The axes to plot the bounding boxes and ellipses on.
-        convert_to_degrees:
-            Whether to convert the angles to degrees.
-        ellipse_kwargs:
-            (Optional) A dictionary of keyword arguments to pass to each Ellipse initializer.
-        rectangle_kwargs:
-            (Optional) A dictionary of keyword arguments to pass to each Rectangle initializer.
-
-        Returns
-        -------
-        Axes:
-            The axes with the bounding boxes and ellipses plotted.
-        """
-        if ellipse_kwargs is None:
-            ellipse_kwargs = dict(color="b", alpha=1, fill=False)
-
-        if rectangle_kwargs is None:
-            rectangle_kwargs = dict(color="r", alpha=1, fill=False)
-
-        if convert_to_degrees:
-            theta = torch.rad2deg(self.theta)
-        else:
-            theta = self.theta
-
-        ellipses = [
-            Ellipse((cx, cy), w, h, t, **ellipse_kwargs)
-            for cx, cy, w, h, t in zip(self.cx, self.cy, self.w, self.h, theta)
-        ]
-        ax.add_collection(PatchCollection(ellipses, match_original=True))
-
-        rectangles = [
-            Rectangle((x_min, y_min), w, h, **rectangle_kwargs)
-            for x_min, y_min, w, h in zip(self.x_min, self.y_min, self.w, self.h)
-        ]
-        ax.add_collection(PatchCollection(rectangles, match_original=True))
-
-        return ax
+    if plot_centers:
+        for k, b_i in enumerate(boxes):
+            x1, y1, x2, y2 = b_i
+            ax.text(x1, y1, str(k), color=rim_color)

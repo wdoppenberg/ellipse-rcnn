@@ -9,3 +9,47 @@
 
 A PyTorch (Lightning) implementation of Ellipse R-CNN. Originally developed for [another project](https://github.com/wdoppenberg/crater-detection), it has proven succesful in predicting instanced ellipses.
 The methodology is based on [this paper](https://arxiv.org/abs/2001.11584), albeit different in the sense that this model uses the regressed bounding box predictions instead of region proposals as the base for predicted normalised ellipse parameters.
+
+
+
+## Setup
+
+Make sure you have [uv](https://docs.astral.sh/uv/getting-started/installation/) installed.
+
+From the project root, run:
+
+```shell
+uv sync --all-groups
+```
+
+This sets up a new virtual environment and installs all packages into it.
+
+Get info on either the training or sample (prediction) script using:
+
+```shell
+uv run scripts/train.py --help
+# or
+uv run scripts/sample.py --help
+```
+
+If you want to do experiment tracking, use tensorboard:
+
+```shell
+uvx tensorboard --logdir=lightning_logs
+```
+
+# Data
+
+Currently the training script only supports training with FDDB. See the required steps for
+getting & structuring the data below. More datasets can be supported if needed.
+If you want to download a dataset directly, use the following script:
+
+```shell
+uv run scripts/download.py <DATASET_NAME> [Optional: --root <ROOT_FOLDER>]
+```
+
+## FDDB Data
+
+The [Face Detection Dataset & Benchmark](https://vis-www.cs.umass.edu/fddb/) (FDDB) [module](ellipse_rcnn/data/fddb.py) contains the `Dataset` subclass that does all the data loading and
+transformations. It will download and unpack the necessary files to `./data/FDDB`. Simply running the training
+script will download the necessary files.

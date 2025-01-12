@@ -2,8 +2,8 @@ import h5py
 import torch
 from torch.utils.data import Dataset
 
-from ellipse_rcnn.utils.types import TargetDict, ImageTargetTuple
-from ellipse_rcnn.utils.conics import bbox_ellipse
+from ellipse_rcnn.core.types import ImageTargetTuple
+from ellipse_rcnn.core.ops import bbox_ellipse_matrix
 
 
 class CraterEllipseDataset(Dataset):
@@ -15,6 +15,9 @@ class CraterEllipseDataset(Dataset):
     def __init__(self, file_path: str, group: str) -> None:
         self.file_path = file_path
         self.group = group
+        raise NotImplementedError(
+            "This dataset is not yet implemented. Please contact the author for more information."
+        )
 
     def __getitem__(self, idx: torch.Tensor) -> ImageTargetTuple:
         with h5py.File(self.file_path, "r") as dataset:
@@ -24,9 +27,11 @@ class CraterEllipseDataset(Dataset):
             # instances.
             start_idx = dataset[self.group]["craters/crater_list_idx"][idx]
             end_idx = dataset[self.group]["craters/crater_list_idx"][idx + 1]
-            ellipse_matrices = torch.tensor(dataset[self.group]["craters/A_craters"][start_idx:end_idx])
+            ellipse_matrices = torch.tensor(
+                dataset[self.group]["craters/A_craters"][start_idx:end_idx]
+            )
 
-        boxes = bbox_ellipse(ellipse_matrices)
+        boxes = bbox_ellipse_matrix(ellipse_matrices)
         area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
 
         num_objs = len(boxes)
@@ -36,16 +41,16 @@ class CraterEllipseDataset(Dataset):
 
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
 
-        target = TargetDict(
+        target = dict(
             boxes=boxes,
             labels=labels,
             image_id=image_id,
             area=area,
             iscrowd=iscrowd,
-            ellipse_matrices=ellipse_matrices,
+            ellipse_matrices=ellipse_matrices,  # type: ignore
         )
 
-        return image, target
+        return image, target  # type: ignore
 
     def __len__(self) -> int:
         with h5py.File(self.file_path, "r") as f:

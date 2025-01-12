@@ -128,3 +128,29 @@ dmypy.json
 # Pyre type checker
 .pyre/
 .old
+
+# Data folders
+/data/
+/data*
+lightning_logs/
+tb_logs/
+/notebooks/data
+
+# Ruff
+.ruff_cache/
+
+# VSCode
+.vscode/
+
+# Poetry
+poetry.lock
+
+# PyCharm
+.idea/
+/uv.lock
+/checkpoints
+
+# Pytorch checkpoints
+*.ckpt
+*.pt
+*.pth

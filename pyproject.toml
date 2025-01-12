@@ -1,32 +1,56 @@
-[tool.poetry]
+[project]
 name = "ellipse-rcnn"
-version = "0.1.0"
+version = "0.2.0"
 description = "A PyTorch Implementation of Ellipse-RCNN"
-authors = ["Wouter Doppenberg <wouterdoppenberg@gmail.com>"]
-license = "MIT"
-packages = [
-    { include = "ellipse_rcnn" }
+authors = [
+    { name = "Wouter Doppenberg", email = "wouterdoppenberg@gmail.com" }
+]
+license = { text = "MIT" }
+requires-python = "==3.12.*"
+dependencies = [
+    "h5py>=3.12.1",
+    "matplotlib>=3.10.0",
+    "pandas>=2.2.3",
+    "pytorch-lightning>=2.5.0.post0",
+    "torch>=2.5.1",
+    "torchmetrics>=1.6.0",
+    "torchvision>=0.20.1",
 ]
 
-[tool.poetry.dependencies]
-python = "^3.9"
-torchvision = "^0.12.0"
-pandas = "^1.4.2"
-matplotlib = "^3.5.1"
-pytorch-lightning = "^1.6.1"
-h5py = "^3.6.0"
-torch = "^1.11.0"
-torchmetrics = "^0.8.1"
+[dependency-groups]
+dev = [
+    "jupyter>=1.1.1",
+    "pre-commit>=4.0.1",
+    "pyqt6>=6.8.0",
+    "pytest>=8.3.4",
+    "ruff>=0.8.4",
+    "seaborn>=0.13.2",
+    "tensorboard>=2.18.0",
+    "torch-tb-profiler>=0.4.3",
+    "typer>=0.15.1",
+]
 
-[tool.poetry.dev-dependencies]
-pytest = "^7.1.1"
-pre-commit = "^2.18.1"
-poethepoet = "^0.10.0"
-jupyter = "^1.0.0"
+[project.scripts]
 
-[tool.poe.tasks]
-force-cuda11 = "python -m pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 -f https://download.pytorch.org/whl/torch_stable.html"
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"test/**" = ["ARG", "S", "D", "ANN"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.bandit]
+exclude_dirs = ["test", "notebooks"]
