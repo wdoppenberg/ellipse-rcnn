@@ -4,7 +4,7 @@ https://vis-www.cs.umass.edu/fddb/
 """
 
 from glob import glob
-from typing import Any
+from typing import Any, Self
 from pathlib import Path
 
 import torch
@@ -14,11 +14,11 @@ import torchvision.transforms
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader, random_split
 
-from ellipse_rcnn.utils.types import TargetDict, ImageTargetTuple, EllipseTuple
+from ellipse_rcnn.core.types import TargetDict, ImageTargetTuple, EllipseTuple
 from ellipse_rcnn.core.ops import (
     bbox_ellipse,
 )
-from ellipse_rcnn.utils.data.base import EllipseDatasetBase, collate_fn
+from ellipse_rcnn.data.base import EllipseDatasetBase, collate_fn
 
 
 def preprocess_label_files(root_path: str) -> dict[str, list[EllipseTuple]]:
@@ -56,7 +56,7 @@ def preprocess_label_files(root_path: str) -> dict[str, list[EllipseTuple]]:
             a, b, theta, x, y = [
                 float(v) for v in ellipse_data[j].split(" ")[:-1] if len(v) > 0
             ]
-            ellipse_params = EllipseTuple(a, b, theta, x, y)
+            ellipse_params = EllipseTuple(a=a, b=b, x=x, y=y, theta=theta)
             ellipse_dict[file_path].append(ellipse_params)
 
     return ellipse_dict
@@ -74,9 +74,6 @@ class FDDB(EllipseDatasetBase):
             self.transform = torchvision.transforms.Compose(
                 [
                     torchvision.transforms.ToTensor(),
-                    torchvision.transforms.Normalize(
-                        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                    ),
                 ]
             )
         else:
@@ -138,7 +135,7 @@ class FDDB(EllipseDatasetBase):
     def __repr__(self) -> str:
         return f"FDDB<img={len(self)}>"
 
-    def split(self, fraction: float, shuffle: bool = False) -> tuple["FDDB", "FDDB"]:
+    def split(self, fraction: float, shuffle: bool = False) -> tuple[Self, Self]:
         """
         Splits the dataset into two subsets based on the given fraction.
 

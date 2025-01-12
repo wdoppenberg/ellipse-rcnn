@@ -3,7 +3,7 @@ from typing import Any
 
 from torch.utils.data import Dataset
 
-from ellipse_rcnn.utils.types import (
+from ellipse_rcnn.core.types import (
     TargetDict,
     CollatedBatchType,
     UncollatedBatchType,

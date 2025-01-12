@@ -2,7 +2,7 @@ import h5py
 import torch
 from torch.utils.data import Dataset
 
-from ellipse_rcnn.utils.types import TargetDict, ImageTargetTuple
+from ellipse_rcnn.core.types import TargetDict, ImageTargetTuple
 from ellipse_rcnn.core.ops import bbox_ellipse_matrix
 
 

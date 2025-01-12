@@ -26,36 +26,38 @@ def encode_ellipses(
         Encoded ellipse parameters relative to proposals, shape [N, 5].
     """
     a, b, cx, cy, theta = reference_ellipses.unbind(-1)
+
     # Proposal box parameters [N]
     ex_widths = proposals[:, 2] - proposals[:, 0]
     ex_heights = proposals[:, 3] - proposals[:, 1]
     ex_ctr_x = proposals[:, 0] + 0.5 * ex_widths
     ex_ctr_y = proposals[:, 1] + 0.5 * ex_heights
-    ex_diag = torch.sqrt(ex_widths**2 + ex_heights**2)
+    ex_diag = torch.sqrt(ex_widths ** 2 + ex_heights ** 2)
 
-    # Unpack weights
-    wa = weights[0]
-    wb = weights[1]
-    wx = weights[2]
-    wy = weights[3]
-    wtheta = weights[4]
-
-    # Center offset targets normalized by proposal dimensions [N]
-    targets_dx = wx * (cx - ex_ctr_x) / ex_diag
-    targets_dy = wy * (cy - ex_ctr_y) / ex_diag
-
-    # Axis lengths normalized by proposal diagonal [N]
-    targets_da = wa * torch.log(2 * a / ex_diag)
-    targets_db = wb * torch.log(2 * b / ex_diag)
-
-    # Angle target - normalize to [-1,1] range [N]
-    targets_dtheta = wtheta * (theta / torch.pi)
-
-    # Stack to [N, 5]
-    targets = torch.stack(
-        (targets_da, targets_db, targets_dx, targets_dy, targets_dtheta), dim=1
+    # Get the normalized angle by checking if axes need to be swapped
+    swap_mask = a < b
+    theta_normalized = torch.where(
+        swap_mask,
+        theta + torch.pi / 2,
+        theta
     )
-    return targets
+    theta_normalized = torch.atan2(torch.sin(theta_normalized), torch.cos(theta_normalized))
+
+    # Encode using sin and cos instead of raw angle for continuity
+    wt = weights[4]
+    targets_sin = wt * torch.sin(2 * theta_normalized)
+    targets_cos = wt * torch.cos(2 * theta_normalized)
+
+    # Center offset and axis length targets as before
+    targets_da = weights[0] * torch.log(2 * a / ex_diag)
+    targets_db = weights[1] * torch.log(2 * b / ex_diag)
+    targets_dx = weights[2] * (cx - ex_ctr_x) / ex_diag
+    targets_dy = weights[3] * (cy - ex_ctr_y) / ex_diag
+
+    return torch.stack(
+        (targets_da, targets_db, targets_dx, targets_dy, targets_sin, targets_cos),
+        dim=1
+    )
 
 
 def decode_ellipses(
@@ -93,14 +95,15 @@ def decode_ellipses(
     db = ellipse_enc[:, 1] / weights[1]
     dx = ellipse_enc[:, 2] / weights[2]
     dy = ellipse_enc[:, 3] / weights[3]
-    dtheta = ellipse_enc[:, 4] / weights[4]
+    dsin = ellipse_enc[:, 4] / weights[4]
+    dcos = ellipse_enc[:, 5] / weights[4]
 
     # Proposal box parameters [N]
     widths = proposals[:, 2] - proposals[:, 0]
     heights = proposals[:, 3] - proposals[:, 1]
     ctr_x = proposals[:, 0] + 0.5 * widths
     ctr_y = proposals[:, 1] + 0.5 * heights
-    diag = torch.sqrt(widths**2 + heights**2)
+    diag = torch.sqrt(widths ** 2 + heights ** 2)
 
     # Decode center coordinates [N]
     pred_cx = dx * diag + ctr_x
@@ -110,15 +113,23 @@ def decode_ellipses(
     pred_a = torch.exp(da) * diag / 2
     pred_b = torch.exp(db) * diag / 2
 
-    # Decode angle [N]
-    pred_theta = dtheta * torch.pi
+    # Decode angle using arctan2
+    pred_theta = 0.5 * torch.atan2(dsin, dcos)
 
-    # Ensure b <= a
-    pred_a, pred_b = torch.maximum(pred_a, pred_b), torch.minimum(pred_a, pred_b)
-
-    return torch.stack([pred_a, pred_b, pred_cx, pred_cy, pred_theta], dim=-1).view(
-        -1, 5
+    # Handle axis swapping without inplace operations
+    swap_mask = pred_b > pred_a
+    final_a = torch.where(swap_mask, pred_b, pred_a)
+    final_b = torch.where(swap_mask, pred_a, pred_b)
+    final_theta = torch.where(
+        swap_mask,
+        pred_theta + torch.pi / 2,
+        pred_theta
     )
+
+    # Normalize angle to [-π/2, π/2]
+    final_theta = torch.atan2(torch.sin(final_theta), torch.cos(final_theta))
+
+    return torch.stack([final_a, final_b, pred_cx, pred_cy, final_theta], dim=-1)
 
 
 class EllipseEncoder:
@@ -194,7 +205,7 @@ class EllipseEncoder:
 
     def decode(
         self, rel_codes: torch.Tensor, proposals: list[torch.Tensor]
-    ) -> tuple[torch.Tensor, ...] | torch.Tensor:
+    ) -> tuple[torch.Tensor, ...]:
         """
         From a set of encoded relative ellipse parameters and proposal boxes,
         decode the absolute ellipse parameters.
@@ -203,8 +214,10 @@ class EllipseEncoder:
             rel_codes: Encoded relative parameters [N, 5]
             proposals: List of proposal boxes tensors
         """
-        assert isinstance(proposals, (list, tuple))
-        assert isinstance(rel_codes, torch.Tensor)
+        if not isinstance(proposals, (list, tuple)):
+            raise TypeError("proposals must be a list or tuple")
+        if not isinstance(rel_codes, torch.Tensor):
+            raise TypeError("rel_codes must be a torch.Tensor")
 
         # Concatenate proposal boxes
         boxes_per_image = [b.size(0) for b in proposals]
@@ -220,8 +233,8 @@ class EllipseEncoder:
         # Split parameters if needed
         if box_sum > 0:
             return pred_ellipses.split(boxes_per_image)
-
-        return pred_ellipses
+        else:
+            return (pred_ellipses,)
 
     def decode_single(
         self, rel_codes: torch.Tensor, proposals: torch.Tensor

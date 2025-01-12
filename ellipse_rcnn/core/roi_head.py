@@ -1,7 +1,7 @@
 from typing import TypedDict
 
 import torch
-from torch import nn
+from torch import nn, Tensor
 from torch.nn import functional as F
 from torchvision.models.detection.roi_heads import RoIHeads
 from torchvision.ops import boxes as box_ops
@@ -24,7 +24,7 @@ class EllipseRCNNPredictor(nn.Module):
     def __init__(self, in_channels: int, num_classes: int):
         super().__init__()
         self.cls_score = nn.Linear(in_channels, num_classes)
-        self.bbox_pred = nn.Linear(in_channels, num_classes * 5)
+        self.bbox_pred = nn.Linear(in_channels, num_classes * 6)  # [da, db, dcx, dcy, dsin_theta, dcos_theta]
 
     def forward(self, x):
         if x.dim() == 4:
@@ -40,16 +40,16 @@ class EllipseRCNNPredictor(nn.Module):
 
 
 class EllipseLossDict(TypedDict):
-    loss_ellipse_kld: torch.Tensor
-    loss_ellipse_smooth_l1: torch.Tensor
+    loss_ellipse_kld: Tensor
+    loss_ellipse_smooth_l1: Tensor
 
 
 def ellipse_rcnn_loss(
-    class_logits: torch.Tensor,
-    ellipse_regression: torch.Tensor,
-    labels: list[torch.Tensor],
-    regression_targets: list[torch.Tensor],
-) -> tuple[torch.Tensor, torch.Tensor]:
+    class_logits: Tensor,
+    ellipse_regression: Tensor,
+    labels: list[Tensor],
+    regression_targets: list[Tensor],
+) -> tuple[Tensor, Tensor]:
     """
     Computes the loss for Ellipse R-CNN.
 
@@ -76,7 +76,7 @@ def ellipse_rcnn_loss(
     labels_pos = labels[sampled_pos_inds_subset]
     N, num_classes = class_logits.shape
     ellipse_regression = ellipse_regression.reshape(
-        N, ellipse_regression.size(-1) // 5, 5
+        N, ellipse_regression.size(-1) // 6, 6
     )
 
     ellipse_reg_loss = F.smooth_l1_loss(
@@ -157,11 +157,11 @@ class EllipseRoIHeads(RoIHeads):
 
     def forward(
         self,
-        features: dict[str, torch.Tensor],
-        proposals: list[torch.Tensor],
+        features: dict[str, Tensor],
+        proposals: list[Tensor],
         image_shapes: list[tuple[int, int]],
-        targets: list[dict[str, torch.Tensor]] | None = None,
-    ) -> tuple[list[dict[str, torch.Tensor]], dict[str, torch.Tensor]]:
+        targets: list[dict[str, Tensor]] | None = None,
+    ) -> tuple[list[dict[str, Tensor]], dict[str, Tensor]]:
         if targets is not None:
             for t in targets:
                 floating_point_types = (torch.float, torch.double, torch.half)
@@ -184,7 +184,7 @@ class EllipseRoIHeads(RoIHeads):
         ellipse_features = self.ellipse_head(ellipse_features)
         class_logits, ellipse_regression = self.ellipse_predictor(ellipse_features)
 
-        result: list[dict[str, torch.Tensor]] = []
+        result: list[dict[str, Tensor]] = []
         losses = {}
         if self.training:
             if labels is None or regression_targets is None:
@@ -215,64 +215,12 @@ class EllipseRoIHeads(RoIHeads):
 
         return result, losses
 
-    def postprocess_ellipse_predictor(
-        self,
-        pred: torch.Tensor,
-        box_proposals: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Processes elliptical predictor outputs and converts them into conic matrices.
-
-        Parameters
-        ----------
-        pred : torch.Tensor
-            Tensor containing predicted ellipse parameters, with shape (N, 5). Each parameter
-            is represented as a 5-tuple (d_a, d_b, dx, dy, dtheta).
-        box_proposals : torch.Tensor
-            Tensor containing proposed bounding box information, with shape (N, 4). Each box
-            is represented as a 4-tuple (x_min, y_min, x_max, y_max).
-
-        Returns
-        -------
-        tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
-            A tuple containing:
-            - a (torch.Tensor): Computed semi-major axis of the ellipses.
-            - b (torch.Tensor): Computed semi-minor axis of the ellipses.
-            - x (torch.Tensor): X-coordinates of the ellipse centers.
-            - y (torch.Tensor): Y-coordinates of the ellipse centers.
-            - theta (torch.Tensor): Rotation angles (in radians) for the ellipses.
-
-        """
-        d_a, d_b, d_theta = pred
-
-        # Pre-compute box width, height, and diagonal
-        box_width = box_proposals[:, 2] - box_proposals[:, 0]
-        box_height = box_proposals[:, 3] - box_proposals[:, 1]
-        box_diag = torch.sqrt(box_width**2 + box_height**2)
-
-        a = box_diag * d_a.exp()
-        b = box_diag * d_b.exp()
-
-        box_x = box_proposals[:, 0] + box_width * 0.5
-        box_y = box_proposals[:, 1] + box_height * 0.5
-
-        theta = (d_theta * 2.0 - 1.0) * (torch.pi / 2)
-
-        cos_theta = torch.cos(theta)
-        sin_theta = torch.sin(theta)
-        theta = torch.where(
-            cos_theta >= 0,
-            torch.atan2(sin_theta, cos_theta),
-            torch.atan2(-sin_theta, -cos_theta),
-        )
-
-        return a, b, box_x, box_y, theta
-
     def ellipse_loss(
         self,
-        pred: torch.Tensor,
-        target: list[torch.Tensor],
-        pos_matched_idxs: list[torch.Tensor],
-        box_proposals: list[torch.Tensor],
+        pred: Tensor,
+        target: list[Tensor],
+        pos_matched_idxs: list[Tensor],
+        box_proposals: list[Tensor],
     ) -> EllipseLossDict:
         target = torch.cat(
             [o[idxs] for o, idxs in zip(target, pos_matched_idxs)], dim=0
@@ -322,10 +270,10 @@ class EllipseRoIHeads(RoIHeads):
 
     def select_training_samples(
         self,
-        proposals: list[torch.Tensor],
-        targets: list[dict[str, torch.Tensor]] | None,
+        proposals: list[Tensor],
+        targets: list[dict[str, Tensor]] | None,
     ) -> tuple[
-        list[torch.Tensor], list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]
+        list[Tensor], list[Tensor], list[Tensor], list[Tensor]
     ]:
         self.check_targets(targets)
         if targets is None:
@@ -337,14 +285,15 @@ class EllipseRoIHeads(RoIHeads):
         gt_labels = [t["labels"] for t in targets]
         gt_ellipses = [t["ellipse_params"] for t in targets]
 
-        # append ground-truth bboxes to propos
+        # Append ground-truth bboxes to proposals
         proposals = self.add_gt_proposals(proposals, gt_boxes)
 
-        # get matching gt indices for each proposal
+        # Get matching gt indices for each proposal
         matched_idxs, labels = self.assign_targets_to_proposals(
             proposals, gt_boxes, gt_labels
         )
-        # sample a fixed proportion of positive-negative proposals
+
+        # Sample a fixed proportion of positive-negative proposals
         sampled_inds = self.subsample(labels)
         matched_gt_ellipses = []
         num_images = len(proposals)
@@ -364,12 +313,12 @@ class EllipseRoIHeads(RoIHeads):
 
     def postprocess_detections(
         self,
-        class_logits: torch.Tensor,
-        ellipse_regression: torch.Tensor,
-        proposals: list[torch.Tensor],
+        class_logits: Tensor,
+        ellipse_regression: Tensor,
+        proposals: list[Tensor],
         image_shapes: list[tuple[int, int]],
     ) -> tuple[
-        list[torch.Tensor], list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]
+        list[Tensor], list[Tensor], list[Tensor], list[Tensor]
     ]:
         device = class_logits.device
         num_classes = class_logits.shape[-1]
@@ -379,7 +328,7 @@ class EllipseRoIHeads(RoIHeads):
 
         pred_scores = F.softmax(class_logits, -1)
 
-        if isinstance(pred_ellipses, torch.Tensor):
+        if isinstance(pred_ellipses, Tensor):
             pred_ellipses = pred_ellipses.split(boxes_per_image, 0)
 
         pred_scores_list = pred_scores.split(boxes_per_image, 0)

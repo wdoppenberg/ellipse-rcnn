@@ -2,7 +2,7 @@ import typer
 import numpy as np
 from matplotlib import pyplot as plt
 
-from ellipse_rcnn.utils.data.fddb import FDDB
+from ellipse_rcnn.data.fddb import FDDB
 from ellipse_rcnn import EllipseRCNN
 from ellipse_rcnn.core.model import EllipseRCNNLightning
 from ellipse_rcnn.utils.viz import plot_ellipses, plot_bboxes

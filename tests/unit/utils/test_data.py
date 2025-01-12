@@ -1,7 +1,7 @@
 import torch
 
-from ellipse_rcnn.utils.types import TargetDict, UncollatedBatchType
-from ellipse_rcnn.utils.data.base import collate_fn
+from ellipse_rcnn.core.types import TargetDict, UncollatedBatchType
+from ellipse_rcnn.data import collate_fn
 
 
 def test_collate_fn() -> None:

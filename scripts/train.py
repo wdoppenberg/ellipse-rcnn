@@ -5,10 +5,11 @@ import random
 from pytorch_lightning.callbacks import ModelCheckpoint
 from ellipse_rcnn import EllipseRCNN
 from ellipse_rcnn.core.model import EllipseRCNNLightning
-from ellipse_rcnn.utils.data.fddb import FDDBLightningDataModule
 from pytorch_lightning.callbacks import EarlyStopping
 
-app = typer.Typer()
+from ellipse_rcnn.data.fddb import FDDBLightningDataModule
+
+app = typer.Typer(pretty_exceptions_show_locals=False)
 
 
 @app.command()
@@ -23,7 +24,7 @@ def train_model(
     num_workers: int = 4,
 ):
     datamodule = FDDBLightningDataModule(
-        "../data/FDDB", num_workers=num_workers, batch_size=4
+        "data/FDDB", num_workers=num_workers, batch_size=4
     )
     if iterations > 1:
         print("Warning: Running with multiple iterations.")
@@ -68,4 +69,4 @@ def train_model(
 
 
 if __name__ == "__main__":
-    typer.run(train_model)
+    app()

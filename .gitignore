@@ -130,7 +130,7 @@ dmypy.json
 .old
 
 # Data folders
-data/
+/data/
 lightning_logs/
 tb_logs/
 
@@ -147,3 +147,8 @@ poetry.lock
 .idea/
 /uv.lock
 /checkpoints
+
+# Pytorch checkpoints
+*.ckpt
+*.pt
+*.pth

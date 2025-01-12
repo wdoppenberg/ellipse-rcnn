@@ -3,18 +3,18 @@ from typing import List, Tuple, Optional, Any
 
 import pytorch_lightning as pl
 import torch
-from torch import nn
+from torch import nn, Tensor
 from torchvision.models import ResNet50_Weights, WeightsEnum
 from torchvision.models.detection.anchor_utils import AnchorGenerator
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 from torchvision.models.detection.faster_rcnn import TwoMLPHead, FastRCNNPredictor  # noqa: F
 from torchvision.models.detection.generalized_rcnn import GeneralizedRCNN
 from torchvision.models.detection.rpn import RPNHead, RegionProposalNetwork
-from torchvision.models.detection.transform import GeneralizedRCNNTransform
 from torchvision.ops import MultiScaleRoIAlign
 
 from .roi_head import EllipseRoIHeads, EllipseRCNNPredictor
-from ..utils.types import CollatedBatchType
+from ellipse_rcnn.core.types import CollatedBatchType, TargetDict, LossDict, PredictionDict
+from .transform import EllipseRCNNTransform
 
 
 class EllipseRCNN(GeneralizedRCNN):
@@ -196,9 +196,13 @@ class EllipseRCNN(GeneralizedRCNN):
             image_mean = [0.485, 0.456, 0.406]
         if image_std is None:
             image_std = [0.229, 0.224, 0.225]
-        transform = GeneralizedRCNNTransform(min_size, max_size, image_mean, image_std)
+
+        transform = EllipseRCNNTransform(min_size, max_size, image_mean, image_std)
 
         super().__init__(backbone, rpn, roi_heads, transform)
+
+    def forward(self, images: list[Tensor], targets: list[TargetDict] | None = None) -> LossDict | list[PredictionDict]:
+        return super().forward(images, targets)  # type: ignore
 
 
 class EllipseRCNNLightning(pl.LightningModule):
@@ -229,7 +233,7 @@ class EllipseRCNNLightning(pl.LightningModule):
 
     def training_step(
         self, batch: CollatedBatchType, batch_idx: int = 0
-    ) -> torch.Tensor:
+    ) -> Tensor:
         images, targets = batch
         loss_dict = self.model(images, targets)
         self.log_dict(
@@ -246,7 +250,7 @@ class EllipseRCNNLightning(pl.LightningModule):
 
     def validation_step(
         self, batch: CollatedBatchType, batch_idx: int = 0
-    ) -> torch.Tensor:
+    ) -> Tensor:
         self.train(True)
         images, targets = batch
 
