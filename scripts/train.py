@@ -2,11 +2,13 @@ import pytorch_lightning as pl
 import typer
 import random
 
+from pytorch_lightning import LightningDataModule
 from pytorch_lightning.callbacks import ModelCheckpoint
 from ellipse_rcnn import EllipseRCNN
 from ellipse_rcnn.core.model import EllipseRCNNLightning
 from pytorch_lightning.callbacks import EarlyStopping
 
+from ellipse_rcnn.data.craters import CraterEllipseDataModule
 from ellipse_rcnn.data.fddb import FDDBLightningDataModule
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
@@ -22,10 +24,26 @@ def train_model(
     weight_decay_min: float = 1e-5,
     weight_decay_max: float = 1e-3,
     num_workers: int = 4,
+    batch_size: int = 16,
+    dataset: str = "FDDB",
+    accelerator: str = "auto",
 ) -> None:
-    datamodule = FDDBLightningDataModule(
-        "data/FDDB", num_workers=num_workers, batch_size=16
-    )
+    datamodule: LightningDataModule
+    match dataset:
+        case "FDDB":
+            datamodule = FDDBLightningDataModule(
+                "data/FDDB", num_workers=num_workers, batch_size=batch_size
+            )
+
+        case "Craters":
+            datamodule = CraterEllipseDataModule(
+                "data/Craters/crater_detection.h5",
+                batch_size=batch_size,
+                num_workers=num_workers,
+            )
+
+        case _:
+            raise ValueError(f"Dataset {dataset} not found.")
 
     if iterations > 1:
         print("Warning: Running with multiple iterations.")
@@ -57,8 +75,8 @@ def train_model(
             mode="min",
         )
         trainer = pl.Trainer(
-            accelerator="auto",
-            precision="bf16-mixed",
+            accelerator=accelerator,
+            precision="32",
             max_epochs=40,
             enable_checkpointing=True,
             detect_anomaly=True,

@@ -300,7 +300,7 @@ class EllipseRoIHeads(RoIHeads):
 
             gt_ellipses_in_image = gt_ellipses[img_id]
             if gt_ellipses_in_image.numel() == 0:
-                gt_ellipses_in_image = torch.zeros((1, 4), dtype=dtype, device=device)
+                gt_ellipses_in_image = torch.zeros((1, 5), dtype=dtype, device=device)
             matched_gt_ellipses.append(gt_ellipses_in_image[matched_idxs[img_id]])
 
         regression_targets = self.ellipse_encoder.encode(matched_gt_ellipses, proposals)

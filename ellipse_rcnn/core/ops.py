@@ -90,7 +90,9 @@ def ellipse_center(conic_matrix: torch.Tensor) -> tuple[torch.Tensor, torch.Tens
     # Stabilize any potential numerical instabilities
     centers = torch.matmul(A_inv, b).squeeze()
 
-    return centers[..., 0], centers[..., 1]
+    cx, cy = centers[..., 0].reshape(-1), centers[..., 1].reshape(-1)
+
+    return cx, cy
 
 
 @torch.jit.script
@@ -101,7 +103,7 @@ def ellipse_axes(conic_matrix: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor
         / (-torch.det(conic_matrix) / torch.det(conic_matrix[..., :2, :2]))[..., None]
     )
     axes = torch.sqrt(1 / lambdas)
-    return axes[..., 0], axes[..., 1]
+    return axes[..., 0].reshape(-1), axes[..., 1].reshape(-1)
 
 
 @torch.jit.script
@@ -113,7 +115,7 @@ def ellipse_angle(conic_matrix: torch.Tensor) -> torch.Tensor:
             conic_matrix[..., 1, 1] - conic_matrix[..., 0, 0],
         )
         / 2
-    )
+    ).reshape(-1)
 
 
 def bbox_ellipse(ellipses: torch.Tensor) -> torch.Tensor:

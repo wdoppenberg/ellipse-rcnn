@@ -10,6 +10,7 @@ from ellipse_rcnn.core.ops import (
     bbox_ellipse,
 )
 from ellipse_rcnn.utils.mat import adjugate_matrix, unimodular_matrix
+from tests.unit.core import sample_conic_ellipses
 
 
 def test_adjugate_matrix() -> None:
@@ -385,3 +386,11 @@ def test_ellipse_area():
     assert torch.allclose(
         computed_area, expected_area
     ), f"Expected {expected_area}, got {computed_area}"
+
+
+def test_single_ellipse_center():
+    ellipses_mat = sample_conic_ellipses(1)
+    cx, cy = ellipse_center(ellipses_mat)
+
+    assert cx.shape == (1,)
+    assert cy.shape == (1,)
