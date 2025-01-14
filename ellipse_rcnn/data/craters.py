@@ -115,6 +115,10 @@ class CraterEllipseDataModule(pl.LightningDataModule):
         if stage in (None, "test"):  # Set up test dataset
             self.test_dataset = CraterEllipseDataset(self.file_path, group="test")
 
+        print(
+            f"Data loaded. Train dataset: {len(self.train_dataset)} images, Val dataset: {len(self.val_dataset)} images"  # type: ignore
+        )
+
     def train_dataloader(self) -> DataLoader:
         """
         Returns a DataLoader for the training dataset.
