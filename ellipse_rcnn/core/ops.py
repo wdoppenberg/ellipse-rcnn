@@ -171,7 +171,7 @@ def bbox_ellipse_matrix(
     theta = ellipse_angle(ellipses)
     a, b = ellipse_axes(ellipses)
 
-    ellipses_p = torch.stack([a, b, cx, cy, theta]).view(-1, 5)
+    ellipses_p = torch.stack([a, b, cx, cy, theta]).reshape(-1, 5)
 
     return bbox_ellipse(ellipses_p)
 
