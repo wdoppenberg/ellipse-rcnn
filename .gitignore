@@ -135,6 +135,7 @@ dmypy.json
 lightning_logs/
 tb_logs/
 /notebooks/data
+/notebooks
 
 # Ruff
 .ruff_cache/

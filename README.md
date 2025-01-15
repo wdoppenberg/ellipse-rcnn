@@ -53,3 +53,27 @@ uv run scripts/download.py <DATASET_NAME> [Optional: --root <ROOT_FOLDER>]
 The [Face Detection Dataset & Benchmark](https://vis-www.cs.umass.edu/fddb/) (FDDB) [module](ellipse_rcnn/data/fddb.py) contains the `Dataset` subclass that does all the data loading and
 transformations. It will download and unpack the necessary files to `./data/FDDB`. Simply running the training
 script will download the necessary files.
+
+## Craters Data
+
+Unfortunately, the dataset used to create a Crater Detector is not releasable.
+To generate it, check out [this module](https://github.com/wdoppenberg/crater-detection/blob/main/src/common/data.py), and ensure
+you have a license to run [SurRender](https://www.airbus.com/en/products-services/space/space-customer-support/surrendersoftware).
+
+# Citations
+
+If you use this code in your work, please consider citing the [original paper](https://arxiv.org/abs/2001.11584) and this repository. For this repository,
+you can use the following BibTex entry:
+
+
+```
+@misc{EllipseRCNNPyTorch2025,
+    author = {Doppenberg, Wouter},
+    title = {Ellipse {R-CNN}: {PyTorch} {Implementation}},
+    year = {2025},
+    publisher = {GitHub},
+    journal = {GitHub repository},
+    howpublished = {\url{https://github.com/wdoppenberg/ellipse_rcnn}},
+    note = {An implementation of the Ellipse R-CNN object detection model in PyTorch, based on "Ellipse R-CNN: Learning to Infer Elliptical Object from Clustering and Occlusion" by Dong et al.}
+}
+```

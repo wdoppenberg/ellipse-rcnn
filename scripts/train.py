@@ -1,12 +1,14 @@
-import pytorch_lightning as pl
-import typer
 import random
 
+import pytorch_lightning as pl
+import typer
+from pytorch_lightning import LightningDataModule
+from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.callbacks import ModelCheckpoint
+
 from ellipse_rcnn import EllipseRCNN
 from ellipse_rcnn.core.model import EllipseRCNNLightning
-from pytorch_lightning.callbacks import EarlyStopping
-
+from ellipse_rcnn.data.craters import CraterEllipseDataModule
 from ellipse_rcnn.data.fddb import FDDBLightningDataModule
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
@@ -14,21 +16,47 @@ app = typer.Typer(pretty_exceptions_show_locals=False)
 
 @app.command()
 def train_model(
-    iterations: int = 1,
-    lr: float | None = None,
-    weight_decay: float | None = None,
-    lr_min: float = 1e-5,
-    lr_max: float = 1e-3,
-    weight_decay_min: float = 1e-5,
-    weight_decay_max: float = 1e-3,
-    num_workers: int = 4,
+    iterations: int = typer.Option(1, help="Number of iterations to train the model."),
+    lr: float | None = typer.Option(
+        None, help="Learning rate value. Disables lr sampling."
+    ),
+    weight_decay: float | None = typer.Option(
+        None, help="Weight decay value. Disables weight_decay sampling."
+    ),
+    lr_min: float = typer.Option(1e-5, help="Minimum learning rate for sampling."),
+    lr_max: float = typer.Option(1e-3, help="Maximum learning rate for sampling."),
+    weight_decay_min: float = typer.Option(
+        1e-5, help="Minimum weight decay for sampling."
+    ),
+    weight_decay_max: float = typer.Option(
+        1e-3, help="Maximum weight decay for sampling."
+    ),
+    num_workers: int = typer.Option(4, help="Number of workers for data loading."),
+    batch_size: int = typer.Option(16, help="Batch size for training."),
+    dataset: str = typer.Option("FDDB", help="Dataset to use for training."),
+    accelerator: str = typer.Option("auto", help="Type of accelerator to use."),
 ) -> None:
-    datamodule = FDDBLightningDataModule(
-        "data/FDDB", num_workers=num_workers, batch_size=16
-    )
+    datamodule: LightningDataModule
+    match dataset:
+        case "FDDB":
+            datamodule = FDDBLightningDataModule(
+                "data/FDDB", num_workers=num_workers, batch_size=batch_size
+            )
 
-    if iterations > 1:
-        print("Warning: Running with multiple iterations.")
+        case "Craters":
+            datamodule = CraterEllipseDataModule(
+                "data/Craters/dataset_crater_detection_80k.h5",
+                batch_size=batch_size,
+                num_workers=num_workers,
+            )
+
+        case _:
+            raise ValueError(f"Dataset {dataset} not found.")
+
+    if iterations > 1 and (lr is not None or weight_decay is not None):
+        print(
+            "Warning: Running with multiple iterations with a fixed learning rate or weight decay."
+        )
 
     for iteration in range(iterations):
         sampled_lr = random.uniform(lr_min, lr_max)
@@ -57,11 +85,10 @@ def train_model(
             mode="min",
         )
         trainer = pl.Trainer(
-            accelerator="auto",
+            accelerator=accelerator,
             precision="bf16-mixed",
             max_epochs=40,
             enable_checkpointing=True,
-            detect_anomaly=True,
             callbacks=[checkpoint_callback, early_stopping_callback],
         )
 

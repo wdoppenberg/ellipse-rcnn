@@ -183,7 +183,7 @@ class FDDB(EllipseDatasetBase):
         cy = torch.tensor([[e.y for e in ellipses_list]])
         theta = torch.tensor([[e.theta for e in ellipses_list]])
 
-        ellipse_params = torch.stack((a, b, cx, cy, theta), dim=-1).view(-1, 5)
+        ellipse_params = torch.stack((a, b, cx, cy, theta), dim=-1).reshape(-1, 5)
 
         boxes = bbox_ellipse(ellipse_params)
 
