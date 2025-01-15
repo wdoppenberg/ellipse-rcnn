@@ -5,8 +5,7 @@ import random
 
 from ellipse_rcnn.data.craters import CraterEllipseDataset
 from ellipse_rcnn.data.fddb import FDDB
-from ellipse_rcnn import EllipseRCNN
-from ellipse_rcnn.core.model import EllipseRCNNLightning
+from ellipse_rcnn.pl.model import EllipseRCNNLightning
 from ellipse_rcnn.utils.viz import plot_ellipses, plot_bboxes
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
@@ -20,6 +19,7 @@ def predict(
         0.6, help="Minimum score threshold for predictions."
     ),
     dataset: str = "FDDB",
+    plot_targets: bool = typer.Option(False, help="Whether to plot ground truth."),
     plot_centers: bool = typer.Option(False, help="Whether to plot ellipse centers."),
 ) -> None:
     """
@@ -32,14 +32,13 @@ def predict(
             )
 
         case "Craters":
-            ds = CraterEllipseDataset(data_path, group="test")
+            ds = CraterEllipseDataset(data_path, group="validation")
 
         case _:
             raise ValueError(f"Dataset {dataset} not found.")
     # Load the pretrained model
     typer.echo(f"Loading model from {model_path}...")
-    model = EllipseRCNN()
-    _ = EllipseRCNNLightning.load_from_checkpoint(model_path, model=model)
+    model = EllipseRCNNLightning.load_from_checkpoint(model_path)
     model.eval().cpu()
 
     # Make predictions
@@ -62,25 +61,26 @@ def predict(
         boxes = pred[0]["boxes"][score_mask].view(-1, 4)
 
         # Plot ellipses
-        plot_ellipses(
-            target["ellipse_params"],
-            ax=ax,
-            plot_centers=plot_centers,
-            rim_color="b",
-            alpha=1,
-        )
-
         plot_ellipses(ellipses, ax=ax, plot_centers=plot_centers, alpha=0.7)
 
         # Plot bounding boxes
-        plot_bboxes(
-            target["boxes"],
-            box_type="xyxy",
-            ax=ax,
-            rim_color="b",
-            alpha=1,
-        )
         plot_bboxes(boxes, box_type="xyxy", ax=ax)
+
+        if plot_targets:
+            plot_bboxes(
+                target["boxes"],
+                box_type="xyxy",
+                ax=ax,
+                rim_color="b",
+                alpha=1,
+            )
+            plot_ellipses(
+                target["ellipse_params"],
+                ax=ax,
+                plot_centers=plot_centers,
+                rim_color="b",
+                alpha=1,
+            )
 
     plt.tight_layout()
     plt.show()

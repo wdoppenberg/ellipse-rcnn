@@ -370,7 +370,6 @@ dependencies = [
     { name = "h5py" },
     { name = "matplotlib" },
     { name = "pandas" },
-    { name = "pytorch-lightning" },
     { name = "torch" },
     { name = "torchmetrics" },
     { name = "torchvision" },
@@ -388,13 +387,19 @@ dev = [
     { name = "torch-tb-profiler" },
     { name = "typer" },
 ]
+hf = [
+    { name = "huggingface-hub" },
+]
+pl = [
+    { name = "pytorch-lightning" },
+    { name = "torchmetrics" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "h5py", specifier = ">=3.12.1" },
     { name = "matplotlib", specifier = ">=3.10.0" },
     { name = "pandas", specifier = ">=2.2.3" },
-    { name = "pytorch-lightning", specifier = ">=2.5.0.post0" },
     { name = "torch", specifier = ">=2.5.1" },
     { name = "torchmetrics", specifier = ">=1.6.0" },
     { name = "torchvision", specifier = ">=0.20.1" },
@@ -411,6 +416,11 @@ dev = [
     { name = "tensorboard", specifier = ">=2.18.0" },
     { name = "torch-tb-profiler", specifier = ">=0.4.3" },
     { name = "typer", specifier = ">=0.15.1" },
+]
+hf = [{ name = "huggingface-hub", specifier = ">=0.27.1" }]
+pl = [
+    { name = "pytorch-lightning", specifier = ">=2.5.0.post0" },
+    { name = "torchmetrics", specifier = ">=1.6.1" },
 ]
 
 [[package]]
@@ -572,6 +582,24 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b1/df/48c586a5fe32a0f01324ee087459e112ebb7224f646c0b5023f5e79e9956/httpx-0.28.1.tar.gz", hash = "sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc", size = 141406 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl", hash = "sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad", size = 73517 },
+]
+
+[[package]]
+name = "huggingface-hub"
+version = "0.27.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "filelock" },
+    { name = "fsspec" },
+    { name = "packaging" },
+    { name = "pyyaml" },
+    { name = "requests" },
+    { name = "tqdm" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e1/d2/d6976de7542792fc077b498d64af64882b6d8bb40679284ec0bff77d5929/huggingface_hub-0.27.1.tar.gz", hash = "sha256:c004463ca870283909d715d20f066ebd6968c2207dae9393fdffb3c1d4d8f98b", size = 379407 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6c/3f/50f6b25fafdcfb1c089187a328c95081abf882309afd86f4053951507cd1/huggingface_hub-0.27.1-py3-none-any.whl", hash = "sha256:1c5155ca7d60b60c2e2fc38cbb3ffb7f7c3adf48f824015b219af9061771daec", size = 450658 },
 ]
 
 [[package]]
