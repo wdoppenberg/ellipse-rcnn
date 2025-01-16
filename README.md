@@ -15,8 +15,8 @@ The methodology is based on [Ellipse R-CNN: Learning to Infer Elliptical Object 
 ## Training Setup
 
 Make sure you have [uv](https://docs.astral.sh/uv/getting-started/installation/) installed. This library's dependencies have mostly
-been made optional to make it easy to import the base `EllipseRCNN` model. For training, 
-more dependencies, most importantly `pytorch-lightning`, are under the `train` group. 
+been made optional to make it easy to import the base `EllipseRCNN` model. For training,
+more dependencies, most importantly `pytorch-lightning`, are under the `train` group.
 
 For a training setup, run the following from the project root:
 
