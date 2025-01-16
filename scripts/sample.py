@@ -1,3 +1,4 @@
+import torch
 import typer
 from matplotlib import pyplot as plt
 import seaborn as sns
@@ -5,7 +6,7 @@ import random
 
 from ellipse_rcnn.data.craters import CraterEllipseDataset
 from ellipse_rcnn.data.fddb import FDDB
-from ellipse_rcnn.pl import EllipseRCNNModule
+from ellipse_rcnn.hf import EllipseRCNN
 from ellipse_rcnn.utils.viz import plot_ellipses, plot_bboxes
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
@@ -13,7 +14,9 @@ app = typer.Typer(pretty_exceptions_show_locals=False)
 
 @app.command()
 def predict(
-    model_path: str = typer.Argument(..., help="Path to the model checkpoint."),
+    model_path_or_repo: str = typer.Argument(
+        ..., help="Path to the model weights or HF repo."
+    ),
     data_path: str = typer.Argument(..., help="Path to the dataset directory."),
     min_score: float = typer.Option(
         0.6, help="Minimum score threshold for predictions."
@@ -31,14 +34,14 @@ def predict(
             )
 
         case "Craters":
-            ds = CraterEllipseDataset(data_path, group="test")
+            ds = CraterEllipseDataset(data_path, group="validation")
 
         case _:
             raise ValueError(f"Dataset {dataset} not found.")
 
     # Load the pretrained model
-    typer.echo(f"Loading model from {model_path}...")
-    model = EllipseRCNNModule.load_from_checkpoint(model_path)
+    typer.echo(f"Loading model from {model_path_or_repo}...")
+    model = EllipseRCNN.from_pretrained(model_path_or_repo)
     model.eval().cpu()
 
     # Make predictions
@@ -48,7 +51,8 @@ def predict(
     for i, ax in enumerate(axs):
         idx = random.randint(0, len(ds))
         image, target = ds[idx]
-        pred = model(image.unsqueeze(0))
+        with torch.no_grad():
+            pred = model(image.unsqueeze(0))
         score_mask = pred[0]["scores"] > min_score
         if not len(pred[0]["boxes"][score_mask]) > 0:
             typer.echo(f"No predictions detected for sampled image {idx + 1}.")
