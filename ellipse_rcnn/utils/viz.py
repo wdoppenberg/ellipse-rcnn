@@ -2,12 +2,36 @@ from typing import Literal
 
 import numpy as np
 import torch
+from matplotlib.figure import Figure
+from torch import Tensor
 from torchvision.ops import boxes as box_ops
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.collections import EllipseCollection, PatchCollection
 from matplotlib.patches import Rectangle
 from ellipse_rcnn.core.ops import ellipse_center
+from ellipse_rcnn.core.types import PredictionDict
+
+
+def plot_single_pred(
+    image: Tensor,
+    prediction: PredictionDict | list[PredictionDict],
+    min_score: float = 0.75,
+) -> Figure:
+    if isinstance(prediction, list):
+        if len(prediction) > 1:
+            raise ValueError(
+                "Multiple predictions detected. Please pass a single prediction."
+            )
+        prediction = prediction[0]
+    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+    fig.patch.set_alpha(0)
+    ax.imshow(image.permute(1, 2, 0), cmap="grey")
+    score_mask = prediction["scores"] > min_score
+
+    plot_ellipses(prediction["ellipse_params"][score_mask], ax=ax)
+
+    return fig
 
 
 def plot_ellipses(

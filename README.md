@@ -7,10 +7,66 @@
 
 </div>
 
-A PyTorch (Lightning) implementation of Ellipse R-CNN. Originally developed for [another project](https://github.com/wdoppenberg/crater-detection), it has proven succesful in predicting instanced ellipses.
-The methodology is based on [Ellipse R-CNN: Learning to Infer Elliptical Object from Clustering and Occlusion](https://arxiv.org/abs/2001.11584).
+A PyTorch (Lightning) implementation of Ellipse R-CNN. Extracted from [another project](https://github.com/wdoppenberg/crater-detection).
+The methodology is based on [Ellipse R-CNN: Learning to Infer Elliptical Object from Clustering and Occlusion](https://arxiv.org/abs/2001.11584), albeit
+with slight changes. Primarily this implementation was made to enable Crater detection from Moon orbiter sensors, but
+works with the [Face Detection Dataset & Benchmark](https://vis-www.cs.umass.edu/fddb/) (FDDB) dataset as well.
 
-![Sample image](docs/sample.png)
+<div align="center">
+
+![Sample FDDB predictions](docs/fddb_sample.png)
+![Sample crater predictions](docs/craters_sample.png)
+
+</div>
+
+## Installation
+
+```shell
+pip install ellipse-rcnn
+```
+
+### Optional extras
+
+Enable a feature with the `ellipse-rcnn[<FEATURE>, ...]` pattern.
+
+* `train`: Installs all dependencies necessary to train this model.
+* `hf`: Installs `huggingface-hub` and `safetensors` for easy weights saving & loading through the Huggingface platform.
+
+
+## Quickstart
+
+* Install with all extras through `pip install "ellipse-rcnn[hf,train]"`
+* Select the weights you need from my [Huggingface profile](https://huggingface.co/wdoppenberg).
+
+Run the following:
+
+```python
+import torch
+from ellipse_rcnn.hf import EllipseRCNN  # This is the model with HF functionality included through PyTorchModelHubMixin
+from PIL import Image
+from torchvision.transforms.functional import to_tensor
+from ellipse_rcnn.utils.viz import plot_single_pred
+
+
+model = EllipseRCNN.from_pretrained("wdoppenberg/crater-rcnn")  # For the crater detection model
+model.eval()
+
+png = Image.open("docs/example_craters.png").convert("L")
+img = to_tensor(png)
+with torch.no_grad():
+    pred = model([img])
+
+plot_single_pred(img, pred)
+```
+
+This should output the following:
+
+<div align="center">
+
+<img alt="Crater Prediction" height="300" src="docs/crater_pred.png" width="300"/>
+
+</div>
+
 
 ## Training Setup
 

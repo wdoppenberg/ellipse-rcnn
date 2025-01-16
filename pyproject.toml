@@ -1,6 +1,6 @@
 [project]
 name = "ellipse-rcnn"
-version = "0.2.0"
+version = "0.2.1"
 description = "An implementation of the Ellipse R-CNN object detection model in PyTorch, based on 'Ellipse R-CNN: Learning to Infer Elliptical Object from Clustering and Occlusion' by Dong et al."
 authors = [
     { name = "Wouter Doppenberg", email = "wouterdoppenberg@gmail.com" }
@@ -11,11 +11,11 @@ dependencies = [
     "torch>=2.5.1",
     "torchvision>=0.20.1",
 ]
-
 keywords = ["ellipse", "rcnn", "deep learning", "computer vision", "PyTorch"]
 homepage = "https://github.com/wdoppenberg/ellipse-rcnn"
 repository = "https://github.com/wdoppenberg/ellipse-rcnn.git"
 documentation = "https://github.com/wdoppenberg/ellipse-rcnn"
+readme = "README.md"
 
 [dependency-groups]
 dev = [
