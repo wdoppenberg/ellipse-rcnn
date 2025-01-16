@@ -1,12 +1,12 @@
 [project]
 name = "ellipse-rcnn"
-version = "0.2.1"
+version = "0.2.2"
 description = "An implementation of the Ellipse R-CNN object detection model in PyTorch, based on 'Ellipse R-CNN: Learning to Infer Elliptical Object from Clustering and Occlusion' by Dong et al."
 authors = [
     { name = "Wouter Doppenberg", email = "wouterdoppenberg@gmail.com" }
 ]
 license = { text = "MIT" }
-requires-python = "==3.12.*"
+requires-python = ">=3.12"
 dependencies = [
     "torch>=2.5.1",
     "torchvision>=0.20.1",
