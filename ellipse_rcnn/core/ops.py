@@ -213,10 +213,6 @@ def remove_small_ellipses(ellipses: torch.Tensor, min_size: float) -> torch.Tens
     torch.Tensor
         Indices of ellipses that have both axes larger than or equal to `min_size`.
 
-    Notes
-    -----
-    Ellipses with at least one axis smaller than `min_size` will be filtered out.
-
     Examples
     --------
     >>> ellipses = torch.tensor([[3.0, 2.0, 0.0, 0.0, 0.0],

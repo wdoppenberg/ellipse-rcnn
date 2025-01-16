@@ -21,8 +21,7 @@ type Group = Literal["training", "test", "validation"]
 
 class CraterEllipseDataset(Dataset):
     """
-    Dataset for crater ellipse detection. Mostly meant as an example in combination with
-    https://github.com/wdoppenberg/crater-detection.
+    Dataset for crater ellipse detection. See https://github.com/wdoppenberg/crater-detection.
     """
 
     def __init__(self, file_path: str, group: Group) -> None:

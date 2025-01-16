@@ -6,8 +6,7 @@ from pytorch_lightning import LightningDataModule
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-from ellipse_rcnn import EllipseRCNN
-from ellipse_rcnn.core.model import EllipseRCNNLightning
+from ellipse_rcnn.pl import EllipseRCNNModule
 from ellipse_rcnn.data.craters import CraterEllipseDataModule
 from ellipse_rcnn.data.fddb import FDDBLightningDataModule
 
@@ -68,8 +67,7 @@ def train_model(
 
         print(f"Using parameters - Learning rate: {lr}, Weight decay: {weight_decay}")
         print(f"Starting iteration {iteration + 1}/{iterations}")
-        model = EllipseRCNN(ellipse_loss_scale=float(1e0))
-        pl_model = EllipseRCNNLightning(model, lr=lr, weight_decay=weight_decay)
+        pl_module = EllipseRCNNModule(lr=lr, weight_decay=weight_decay)
 
         checkpoint_callback = ModelCheckpoint(
             monitor="val/loss_total",
@@ -92,7 +90,7 @@ def train_model(
             callbacks=[checkpoint_callback, early_stopping_callback],
         )
 
-        trainer.fit(pl_model, datamodule=datamodule)
+        trainer.fit(pl_module, datamodule=datamodule)
         print(f"Completed iteration {iteration + 1}/{iterations}")
 
 
