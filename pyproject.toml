@@ -8,12 +8,7 @@ authors = [
 license = { text = "MIT" }
 requires-python = "==3.12.*"
 dependencies = [
-    "h5py>=3.12.1",
-    "matplotlib>=3.10.0",
-    "pandas>=2.2.3",
-    "pytorch-lightning>=2.5.0.post0",
     "torch>=2.5.1",
-    "torchmetrics>=1.6.0",
     "torchvision>=0.20.1",
 ]
 
@@ -29,13 +24,26 @@ dev = [
     "pyqt6>=6.8.0",
     "pytest>=8.3.4",
     "ruff>=0.8.4",
-    "seaborn>=0.13.2",
-    "tensorboard>=2.18.0",
-    "torch-tb-profiler>=0.4.3",
-    "typer>=0.15.1",
 ]
 
 [project.scripts]
+
+[project.optional-dependencies]
+hf = [
+    "huggingface-hub>=0.27.1",
+    "safetensors>=0.5.2",
+]
+train = [
+    "h5py>=3.12.1",
+    "matplotlib>=3.10.0",
+    "pandas>=2.2.3",
+    "pytorch-lightning>=2.5.0.post0",
+    "tensorboard>=2.18.0",
+    "torch-tb-profiler>=0.4.3",
+    "torchmetrics>=1.6.1",
+    "typer>=0.15.1",
+    "seaborn>=0.13.2",
+]
 
 
 [build-system]

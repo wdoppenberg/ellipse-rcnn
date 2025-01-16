@@ -5,8 +5,7 @@ import random
 
 from ellipse_rcnn.data.craters import CraterEllipseDataset
 from ellipse_rcnn.data.fddb import FDDB
-from ellipse_rcnn import EllipseRCNN
-from ellipse_rcnn.core.model import EllipseRCNNLightning
+from ellipse_rcnn.pl import EllipseRCNNModule
 from ellipse_rcnn.utils.viz import plot_ellipses, plot_bboxes
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
@@ -36,10 +35,10 @@ def predict(
 
         case _:
             raise ValueError(f"Dataset {dataset} not found.")
+
     # Load the pretrained model
     typer.echo(f"Loading model from {model_path}...")
-    model = EllipseRCNN()
-    _ = EllipseRCNNLightning.load_from_checkpoint(model_path, model=model)
+    model = EllipseRCNNModule.load_from_checkpoint(model_path)
     model.eval().cpu()
 
     # Make predictions
